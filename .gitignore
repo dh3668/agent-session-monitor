@@ -1,0 +1,6 @@
+.DS_Store
+*.vsix
+*.log
+node_modules/
+coverage/
+design/showcase.html
