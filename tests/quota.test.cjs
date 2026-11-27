@@ -64,6 +64,7 @@ test('Claude API-key-only sessions do not produce synthetic account percentages'
   const result = await read('claude');
   assert.equal(result.status, 'unavailable');
   assert.deepEqual(result.windows, []);
+  assert.equal(result.signedOut, true);
 });
 
 test('diagnostic lines a client prints on stdout between protocol messages do not abort the quota read', async t => {

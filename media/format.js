@@ -736,7 +736,7 @@
   }
   const PROVIDER_NAMES = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' };
   const STATUS_NAMES = { approval: phrase('Approval needed'), input: phrase('Answer needed'), working: phrase('Working'), error: phrase('Error'),
-    done: phrase('Replied'), idle: phrase('Paused'), stale: phrase('No signal'), recent: phrase('Recent') };
+    done: phrase('Replied'), idle: phrase('Paused'), stale: phrase('No recent signal'), recent: phrase('Recent') };
   function searchHaystack(row) {
     return [
       row.title, row.prompt, row.reply, row.focus, row.project, PROVIDER_NAMES[row.provider],

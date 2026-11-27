@@ -1040,7 +1040,7 @@
       const at = Number(node.dataset.resetAt);
       const inText = resetInText(at, now);
       const shown = resetLabel(at, now);
-      const value = inText ? t('Resets {0} · {1}', inText, shown) : t('Resets at {0}', shown);
+      const value = inText ? t('Resets {0} · {1}', inText, shown) : t('Resets {0}', shown);
       if (node.textContent !== value) node.textContent = value;
     }
   }

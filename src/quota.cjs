@@ -13,7 +13,7 @@ const maxBytes = 2 * 1024 * 1024;
 const timeout = 12000;
 const WEEK = 10080;
 // Messages are English text; the panel shows them in the display language.
-const unavailable = message => ({status: 'unavailable', windows: [], message});
+const unavailable = (message, extra) => ({status: 'unavailable', windows: [], message, ...extra});
 
 function timestamp(value) {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) {
@@ -38,8 +38,10 @@ function shortLabel(value) {
   return stripControlBidi(value, { collapseSpaces: true, max: 80 });
 }
 
-function snapshot(windows, plan, now) {
-  if (!windows.length) return unavailable(phrase('Could not read subscription limits. Check that you are signed in to the tool.'));
+function snapshot(windows, plan, now, { signedOut = false } = {}) {
+  if (!windows.length) {
+    return unavailable(phrase('Could not read subscription limits. Check that you are signed in to the tool.'), signedOut ? {signedOut: true} : undefined);
+  }
   const rawPlan = shortLabel(plan);
   const plans = {max: 'Max', max5x: 'Max 5x', max20x: 'Max 20x', pro: 'Pro', prolite: 'Pro Lite', plus: 'Plus',
     team: 'Team', enterprise: 'Enterprise', business: 'Business', free: 'Free', edu: 'Edu', go: 'Go',
@@ -72,7 +74,7 @@ function claudeQuota(data, now) {
       }
     }
   }
-  return snapshot(windows, data?.subscription_type, now);
+  return snapshot(windows, data?.subscription_type, now, { signedOut: data?.rate_limits_available === false });
 }
 
 const windowPeriod = (minutes, fallback) => Number.isSafeInteger(minutes) && minutes > 0 ? minutes : fallback;
@@ -93,7 +95,7 @@ function codexQuota(data, now) {
     const name = shortLabel(entry?.limitName) || shortLabel(id);
     if (name) add(entry, name);
   }
-  return snapshot(windows, base?.planType || data?.rateLimits?.planType, now);
+  return snapshot(windows, base?.planType || data?.rateLimits?.planType, now, { signedOut: Boolean(data && typeof data === 'object') });
 }
 
 function agyPeriod(bucket) {
@@ -109,7 +111,8 @@ function agyPeriod(bucket) {
 function agyQuota(data, now) {
   const windows = [];
   const command = data?.command;
-  if (command?.name === 'usage' && data.num_turns === 0 && Array.isArray(command.data?.groups)) {
+  const isUsage = command?.name === 'usage' && data.num_turns === 0 && Array.isArray(command.data?.groups);
+  if (isUsage) {
     for (const group of command.data.groups) {
       for (const bucket of Array.isArray(group?.buckets) ? group.buckets : []) {
         if (!Number.isFinite(bucket?.remaining_fraction)) continue;
@@ -119,7 +122,7 @@ function agyQuota(data, now) {
       }
     }
   }
-  return snapshot(windows, command?.data?.plan_tier, now);
+  return snapshot(windows, command?.data?.plan_tier, now, { signedOut: isUsage });
 }
 
 async function isExecutableFile(candidate) {

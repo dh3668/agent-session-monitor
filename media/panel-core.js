@@ -56,7 +56,7 @@
     if (!hint) return '';
     const at = hint.resetsAt ? resetLabel(hint.resetsAt, now) : '';
     const reset = !hint.resetsAt ? ''
-      : !hint.resetIn ? t('Resets at {0}', at)
+      : !hint.resetIn ? t('Resets {0}', at)
         : compact ? t('Resets {0}', hint.resetIn) : t('Resets {0} ({1})', hint.resetIn, at);
     const used = t('{0} limit used up', hint.label);
     return reset ? used + ' · ' + reset : used;

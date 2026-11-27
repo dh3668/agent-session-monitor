@@ -2,9 +2,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const fsp = require('node:fs/promises');
+const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const i18n = require('../media/i18n.js');
 const format = require('../media/format.js');
+const { createMetadataReader } = require('../src/metadata.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const KO = i18n.TABLES.ko;
@@ -126,6 +130,52 @@ test('English reads naturally for times, statuses, requests, tools and limits', 
   assert.equal(format.subtitleFor({ status: 'working', activity: { tool: 'TaskUpdate', target: '#2' },
     plan: [{ text: 'Verify retries', status: 'in_progress' }] }), 'Plan · Verify retries');
   assert.equal(format.matchesFilter({ status: 'approval', provider: 'codex', title: 'x' }, 'approval needed'), true);
+  assert.equal(format.matchesFilter({ status: 'stale', provider: 'claude', title: 'x' }, 'no recent signal'), true);
+  assert.equal(format.matchesFilter({ status: 'stale', provider: 'claude', title: 'x' }, 'no signal'), true);
+});
+
+test('English metadata uses singular/plural grammar and invalidates stats cache on language change', async t => {
+  const home = await fsp.mkdtemp(path.join(os.tmpdir(), 'i18n-meta-'));
+  t.after(() => { i18n.setLocale('en'); return fsp.rm(home, { recursive: true, force: true }); });
+  const write = async (rel, data) => {
+    const full = path.join(home, rel);
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    await fsp.writeFile(full, typeof data === 'string' ? data : JSON.stringify(data));
+  };
+  const db = async (rel, sql) => {
+    const full = path.join(home, rel);
+    await fsp.mkdir(path.dirname(full), { recursive: true });
+    execFileSync('/usr/bin/sqlite3', ['-batch', full, sql]);
+  };
+
+  await db('.codex/state_5.sqlite', "CREATE TABLE threads(id,title,name,tokens_used,preview); INSERT INTO threads VALUES('c1','t','One',1,''),('c2','t','Two',1199,'');");
+  await db('.gemini/antigravity/conversation_summaries.db', "CREATE TABLE conversation_summaries(conversation_id,title,step_count); INSERT INTO conversation_summaries VALUES('a1','Step one',1),('a2','Step two',44);");
+  await write('.claude/projects/-test-repo/sessions-index.json', { entries: [{ sessionId: 'm1', summary: 'One msg', messageCount: 1 }] });
+  await write('.claude/stats-cache.json', { lastComputedDate: '2026-11-26', totalMessages: 1 });
+
+  const readMeta = createMetadataReader({ homeDir: home, env: {}, cacheMs: 0 });
+  const row = (provider, sessionId) => ({ provider, sessionId, cwd: '/test/repo', key: provider + '/' + sessionId });
+
+  i18n.setLocale('en');
+  const singular = await readMeta([row('codex', 'c1'), row('agy', 'a1'), row('claude', 'm1')], { force: true });
+  assert.equal(singular.sessions.get('codex/c1')?.usage, '1 token total');
+  assert.equal(singular.providerUsage.codex, '1 session · 1 token total');
+  assert.equal(singular.sessions.get('agy/a1')?.usage, '1 step in chat');
+  assert.equal(singular.providerUsage.agy, '1 session · 1 step run');
+  assert.equal(singular.sessions.get('claude/m1')?.usage, '1 message');
+  assert.equal(singular.providerUsage.claude, 'As of 2026-11-26 · 1 message total');
+
+  const plural = await readMeta([row('codex', 'c1'), row('codex', 'c2'), row('agy', 'a1'), row('agy', 'a2')], { force: true });
+  assert.equal(plural.providerUsage.codex, '2 sessions · 1,200 tokens total');
+  assert.equal(plural.providerUsage.agy, '2 sessions · 45 steps run');
+
+  // Switching locale must not return the previous language's cached stats-cache.json string.
+  i18n.setLocale('ko');
+  const koMeta = await readMeta([row('claude', 'm1')], { force: true });
+  assert.equal(koMeta.providerUsage.claude, '2026-11-26 기준 · 누적 메시지 1개');
+  i18n.setLocale('en');
+  const enAgain = await readMeta([row('claude', 'm1')], { force: true });
+  assert.equal(enAgain.providerUsage.claude, 'As of 2026-11-26 · 1 message total');
 });
 
 test('a tool keeps one label per language, so switching languages never shows a cached one', () => {

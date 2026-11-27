@@ -1706,7 +1706,13 @@ test('an English page shows the whole panel in English: rows, the open request, 
   const badge = env.main.querySelector('[data-key="claude/wait1"] .status');
   assert.equal(badge.querySelector('.status-text').textContent, 'Approval');
   assert.equal(badge.querySelector('.status-rest').textContent, 'needed');
+  assert.equal(badge.textContent.trim(), 'Approval needed 2m');
+  assert.equal(env.main.querySelector('.lens-btn[data-value="attention"]')?.getAttribute('aria-label'), 'Attention, 1 session');
+  assert.equal(env.main.querySelector('.lens-btn[data-value="all"]')?.getAttribute('aria-label'), 'All, 2 sessions');
+  assert.equal(env.main.querySelector('[data-key="codex/w1"] .mini-progress')?.title, '1 of 2 plan steps done (50%)');
   env.main.querySelector('[data-key="codex/w1"] .more').click();
+  const stepLink = env.main.querySelector('[data-key="codex/w1"] .step-link');
+  assert.equal(stepLink?.getAttribute('aria-label'), 'Read file · Open file src/retry.ts');
   const text = env.main.textContent;
   for (const shown of ['Needs attention', 'Run command', 'Command to run', 'Deny', 'Allow once', 'Open in chat',
     'Editing code', 'Work plan', 'Changed files', 'Earlier steps', '1m ago', 'Remaining limits', 'Other folders', '1 answer', '2 approvals', '5% Opus', 'Checking']) {
@@ -1715,6 +1721,71 @@ test('an English page shows the whole panel in English: rows, the open request, 
   assert.doesNotMatch(text, /[가-힣]/, 'no Korean is left on an English page');
   const tile = env.main.querySelector('.quota-tile[data-provider="agy"]');
   assert.match(tile.getAttribute('aria-label'), /Antigravity CLI 1\.1\.11 or later is required\. · Show details$/);
+
+  // Verify English singular/plural grammar across hidden-attention notice, 1-step plan, promoted subtask, and 5 quota windows.
+  const promotedParent = {
+    provider: 'codex', key: 'codex/p1', status: 'working', title: 'Main task', updatedAt: now, workSince: now - 60000,
+    priorityTargetKey: 'codex/c1', progress: { done: 1, total: 1 },
+  };
+  const promotedChild = {
+    provider: 'codex', key: 'codex/c1', isSubagent: true, parentKey: 'codex/p1', status: 'approval', title: 'Sub check',
+    updatedAt: now, waitSince: now - 60000, preview: { tool: 'Bash', detail: '{"command":"ls"}' },
+  };
+  env.postFromHost(baseState({
+    sessions: [waiting, working, promotedParent, promotedChild],
+    attentionCount: 2,
+    quotas: {
+      claude: {
+        status: 'ready', plan: 'Max',
+        windows: [
+          { name: '', period: 300, kind: 'used', percent: 30, resetsAt: now + 90 * 60000 },
+          { name: '', period: 10080, kind: 'used', percent: 20, resetsAt: now + 3 * 86400000 },
+          { name: 'Opus', period: 10080, kind: 'used', percent: 50 },
+          { name: 'Sonnet', period: 10080, kind: 'used', percent: 40 },
+          { name: 'Haiku', period: 10080, kind: 'used', percent: 10 },
+        ],
+      },
+    },
+  }));
+  assert.equal(env.main.querySelector('[data-key="codex/p1"] .mini-progress')?.title, '1 of 1 plan step done (100%)');
+  const subBadge = env.main.querySelector('[data-key="codex/p1"] .status');
+  assert.equal(subBadge.querySelector('.status-prefix')?.textContent, 'Subtask:');
+  assert.equal(subBadge.querySelector('.status-text')?.textContent, 'Approval');
+  assert.equal(subBadge.querySelector('.status-rest')?.textContent, 'needed');
+  assert.equal(subBadge.textContent.trim(), 'Subtask: Approval needed 1m');
+
+  // Filter to working -> 1 waiting session hidden (promotedParent stays visible because it is working), then 2 hidden.
+  env.main.querySelector('.lens-btn[data-value="working"]').click();
+  assert.equal(env.main.querySelector('.filter-alert-text')?.textContent, '1 needs attention outside the filter');
+  const waiting2 = { ...waiting, key: 'claude/wait2', title: 'Approve deploy', action: undefined, preview: { tool: 'Bash', detail: '{"command":"deploy"}' } };
+  env.postFromHost(baseState({ sessions: [waiting, waiting2, working], attentionCount: 2 }));
+  assert.equal(env.main.querySelector('.filter-alert-text')?.textContent, '2 need attention outside the filter');
+  env.main.querySelector('.lens-btn[data-value="all"]').click();
+
+  // Open quota overview to verify singular "1 more limit" and date-safe reset wording (no "Resets at <date>").
+  env.postFromHost(baseState({
+    sessions: [waiting],
+    attentionCount: 1,
+    quotas: {
+      claude: {
+        status: 'ready', plan: 'Max',
+        windows: [
+          { name: '', period: 300, kind: 'used', percent: 30, resetsAt: now + 90 * 60000 },
+          { name: '', period: 10080, kind: 'used', percent: 20, resetsAt: now + 3 * 86400000 },
+          { name: 'Opus', period: 10080, kind: 'used', percent: 50 },
+          { name: 'Sonnet', period: 10080, kind: 'used', percent: 40 },
+          { name: 'Haiku', period: 10080, kind: 'used', percent: 10 },
+        ],
+      },
+    },
+  }));
+  const claudeTile = env.main.querySelector('.quota-tile[data-provider="claude"]');
+  assert.doesNotMatch(claudeTile.title, /Resets at /);
+  claudeTile.click();
+  const moreLimits = env.main.querySelector('.quota-extra');
+  assert.equal(moreLimits?.textContent, 'Show 1 more limit');
+  assert.equal(moreLimits?.getAttribute('aria-label'), 'Claude Code: 1 more limit');
+  env.main.querySelector('[data-control="quotaOverview"]').click();
 
   env.postFromHost(baseState({ sessions: [] }));
   assert.ok(env.main.textContent.includes('No sessions yet'));

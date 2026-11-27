@@ -195,24 +195,26 @@
     const child = row !== target;
     const of = text => child ? t('Subtask: {0}', text) : text;
     if (target.replyUnread && target.status === 'done') {
-      return { name: 'unread', text: of(t('New reply')), label: of(t('New reply')), since: target.replyAt, kind: 'ago' };
+      const label = t('New reply');
+      return { name: 'unread', child, text: of(label), label, since: target.replyAt, kind: 'ago' };
     }
     if ((target.status === 'working' || target.status === 'approval' || target.status === 'input') && target.quiet) {
-      return { name: 'quiet', text: of(t('No signal')), label: of(t('No signal')), since: target.signalAt, kind: 'for' };
+      const label = t('No signal');
+      return { name: 'quiet', child, text: of(label), label, since: target.signalAt, kind: 'for' };
     }
-    const text = of(statusLabel(target.status));
+    const label = statusLabel(target.status);
+    const text = of(label);
     if (isWait(target)) {
-      return { name: target.status, text, label: text, short: of(target.status === 'input' ? t('Answer') : t('Approval')), since: target.waitSince, kind: 'for' };
+      return { name: target.status, child, text, label, short: target.status === 'input' ? t('Answer') : t('Approval'), since: target.waitSince, kind: 'for' };
     }
     if (target.status === 'working') {
-      return { name: 'working', text, label: section === 'working' && !child ? '' : text, since: target.workSince, kind: 'for' };
+      return { name: 'working', child, text, label: section === 'working' && !child ? '' : label, since: target.workSince, kind: 'for' };
     }
     if (target.status === 'error') {
       const reason = target.errorReason ? errorLabel(target.errorReason) : (ctx.quotaHintForError(target) ? t('Limit reached') : statusLabel('error'));
-      const label = of(reason);
-      return { name: target.errorAcked ? 'error-acked' : 'error', text: label, label, since: target.updatedAt, kind: 'ago' };
+      return { name: target.errorAcked ? 'error-acked' : 'error', child, text: of(reason), label: reason, since: target.updatedAt, kind: 'ago' };
     }
-    return { name: target.status, text, label: section === 'history' ? '' : text, since: target.updatedAt, kind: 'ago', fallback: t('just now') };
+    return { name: target.status, child, text, label: section === 'history' ? '' : label, since: target.updatedAt, kind: 'ago', fallback: t('just now') };
   }
 
   function sublineIconFor(row, target, owner, ctx) {
@@ -329,7 +331,7 @@
       fill.style.transform = 'scaleX(' + Number((pct / 100).toFixed(4)) + ')';
       track.append(fill);
       aside.append(track, document.createTextNode(row.progress.done + '/' + row.progress.total));
-      aside.title = t('{0} of {1} plan steps done ({2}%)', row.progress.done, row.progress.total, pct);
+      aside.title = tp(row.progress.total, '{1} of {0} plan step done ({2}%)', '{1} of {0} plan steps done ({2}%)', row.progress.done, pct);
     }
     if (about || aside) {
       const second = element('span', 'subline');
@@ -360,10 +362,14 @@
     line.append(opener);
     const badge = element('span', 'status');
     if (info.label) {
+      if (info.child) badge.append(element('span', 'status-prefix', t('Subtask:')), document.createTextNode(' '));
       badge.append(element('span', 'status-text', info.short || info.label));
-      if (info.short && info.label.startsWith(info.short)) badge.append(element('span', 'status-rest', info.label.slice(info.short.length).trim()));
+      if (info.short && info.label.startsWith(info.short)) {
+        badge.append(document.createTextNode(' '), element('span', 'status-rest', info.label.slice(info.short.length).trim()));
+      }
     }
     if (info.since) {
+      if (info.label) badge.append(document.createTextNode(' '));
       const time = element('time', 'since', waited);
       time.dataset.since = info.since;
       time.dataset.kind = info.kind;
@@ -456,7 +462,7 @@
         stats.done && t('{0} done', stats.done),
         stats.quiet && t('{0} no signal', stats.quiet),
         stats.other && t('{0} earlier', stats.other),
-      ].filter(Boolean).join(' · ') || t('{0} earlier subtasks', nodes.length);
+      ].filter(Boolean).join(' · ') || tp(nodes.length, '{0} earlier subtask', '{0} earlier subtasks');
     }
     function appendTree(node, targetList, section, extraClass) {
       const { row, children } = node;
@@ -597,7 +603,7 @@
       const reset = new Date(window.resetsAt);
       const inText = resetInText(window.resetsAt, now);
       const at = resetLabel(window.resetsAt, now);
-      const stamp = element('time', 'quota-reset', inText ? t('Resets {0} · {1}', inText, at) : t('Resets at {0}', at));
+      const stamp = element('time', 'quota-reset', inText ? t('Resets {0} · {1}', inText, at) : t('Resets {0}', at));
       stamp.dateTime = reset.toISOString();
       stamp.dataset.resetAt = window.resetsAt;
       stamp.title = dateTimeShort().format(reset);
@@ -623,8 +629,9 @@
     for (const window of windows.slice(0, 4)) section.append(windowRow(window, ctx.now));
     if (windows.length > 4) {
       const open = ctx.extraLimits.has(id);
-      const toggle = button('quota-extra usage-link', t('{0}: {1} more limits', name, windows.length - 4),
-        open ? t('Hide extra limits') : t('Show {0} more limits', windows.length - 4));
+      const extra = windows.length - 4;
+      const toggle = button('quota-extra usage-link', tp(extra, '{1}: {0} more limit', '{1}: {0} more limits', name),
+        open ? t('Hide extra limits') : tp(extra, 'Show {0} more limit', 'Show {0} more limits'));
       toggle.dataset.control = 'extraLimits';
       toggle.setAttribute('aria-expanded', String(open));
       section.append(toggle);
@@ -672,7 +679,7 @@
       const attention = rows.filter(row => attentionRank(row) >= 0).length;
       if (isCollapsed && attention) {
         toggle.append(element('span', 'group-alert', t('{0} to review', attention)));
-        toggle.setAttribute('aria-label', tp(rows.length, '{1}: {0} session', '{1}: {0} sessions', name) + ', ' + t('{0} need attention', attention));
+        toggle.setAttribute('aria-label', tp(rows.length, '{1}: {0} session', '{1}: {0} sessions', name) + ', ' + tp(attention, '{0} needs attention', '{0} need attention'));
       } else if (rows.length) toggle.append(element('span', 'count', String(rows.length)));
       toggle.append(chevron);
       heading.append(toggle);
@@ -729,12 +736,12 @@
       ['working', t('Active'), counts.working, counts.working ? 'work' : ''],
     ];
     for (const [id, label, count, dotKind] of tabs) {
-      const btn = button('lens-btn', t('{0}, {1} sessions', label, count));
+      const btn = button('lens-btn', tp(count, '{1}, {0} session', '{1}, {0} sessions', label));
       btn.dataset.control = 'lens';
       btn.dataset.value = id;
       btn.setAttribute('aria-pressed', String(ctx.lens === id));
       if (dotKind) btn.append(element('span', 'lens-dot' + (dotKind === 'work' ? ' work' : dotKind === 'unread' ? ' unread' : '')));
-      btn.append(document.createTextNode(label));
+      btn.append(element('span', 'lens-label', label));
       if (count > 0 || id === 'all') btn.append(element('span', 'lens-count', String(count)));
       track.append(btn);
     }
@@ -888,7 +895,7 @@
     notice.title = hiddenWaiting.slice(0, 3).map(r => specFor(r.provider)[1] + ' · ' + visible(r.title)).join('\n');
     const dot = element('span', 'filter-alert-dot');
     dot.setAttribute('aria-hidden', 'true');
-    const text = element('span', 'filter-alert-text', t('{0} need attention outside the filter', hiddenWaiting.length));
+    const text = element('span', 'filter-alert-text', tp(hiddenWaiting.length, '{0} needs attention outside the filter', '{0} need attention outside the filter'));
     const viewBtn = button('filter-alert-btn', t('Clear the filter and show waiting sessions'), t('Show'));
     viewBtn.dataset.control = 'showHiddenAttention';
     notice.append(dot, text, viewBtn);
@@ -994,7 +1001,7 @@
         tile.title = [
           name + ' · ' + quotaLabel(window),
           t('{0} left', amount) + (noteText ? ' · ' + noteText : ''),
-          window.resetsAt && (resetIn ? t('Resets at {0} ({1})', at, resetIn) : t('Resets at {0}', at)),
+          window.resetsAt && (resetIn ? t('Resets {0} ({1})', resetIn, at) : t('Resets {0}', at)),
           ...low.map(w => quotaLabel(w) + ' ' + t('{0}% left', percentLabel(leftOf(w)))),
           quota.status === 'stale' && t('Last checked') + (quota.updatedAt ? ' · ' + resetLabel(quota.updatedAt, now) : ''),
         ].filter(Boolean).join('\n');

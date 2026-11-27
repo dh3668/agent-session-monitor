@@ -6,7 +6,7 @@
     isWait, requestToken, toolKind, stepText,
     requestBlocks, requestSummary, workPhase, fileTargetOf,
   } = root.AgentSessionFormat;
-  const { t, tp, phrase } = root.AgentSessionI18n;
+  const { t, tp, phrase, locale } = root.AgentSessionI18n;
   const P = root.AgentSessionPanel;
   const {
     specFor, sourceText, navigable, when, quotaAlertText,
@@ -168,7 +168,7 @@
   let cachedRequestKey = '';
   let cachedRequestData;
   function getCachedRequest(tool, detail, cwd) {
-    const key = (tool || '') + '\0' + (detail || '') + '\0' + (cwd || '');
+    const key = locale() + '\0' + (tool || '') + '\0' + (detail || '') + '\0' + (cwd || '');
     if (cachedRequestData && cachedRequestKey === key) return cachedRequestData;
     const blocks = requestBlocks(detail, cwd);
     // Compute lineChanges once per diff block and reuse ops for both stats and rendering.
@@ -592,7 +592,7 @@
         const shownLabel = visible(stepLabel);
         const openable = fileTargetOf(step);
         if (openable) {
-          const link = button('step-link', t('Open file {0}', stepLabel), shownLabel);
+          const link = button('step-link', toolKind(step.tool).label + ' · ' + t('Open file {0}', openable), shownLabel);
           link.dataset.action = 'openFile';
           link.dataset.target = row.key;
           link.dataset.file = openable;

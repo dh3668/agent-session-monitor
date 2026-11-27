@@ -80,7 +80,9 @@ function createQuotaCache(directory, readQuota, { now = Date.now, onChange = () 
       if (success) record = { attempt:record.attempt, success };
       else {
         record.error = cleanLabel(result?.message) || phrase('Could not get subscription usage.');
-        if (result?.signedOut || /로그인.*필요|로그인해|인증.*필요/.test(record.error)) delete record.success;
+        if (result?.signedOut || /\b(?:sign[- ]?in|log[- ]?in|auth(?:entication)?)\s+required\b|\bnot\s+(?:signed|logged)\s+in\b|\bplease\s+(?:sign|log)\s+in\b|로그인.*필요|로그인해|인증.*필요/i.test(record.error)) {
+          delete record.success;
+        }
       }
       await save(file, record);
       show(id, record);

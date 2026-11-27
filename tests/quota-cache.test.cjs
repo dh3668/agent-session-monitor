@@ -73,3 +73,42 @@ test('first lookup without account data never shows a zero balance', async t => 
   assert.deepEqual(cache.entries.agy.windows,[]);
   assert.deepEqual(await fs.readdir(dir),['agy.json']);
 });
+
+test('sign-out clears cached limits in English and Korean, while transient English connection errors keep stale readings', async t => {
+  const dir = await fixture(t);
+  let time = Date.now();
+  const ready = { status: 'ready', windows: [{ name: '', period: 300, kind: 'used', percent: 25 }] };
+
+  // 1. Transient English connection error preserves previous reading as stale.
+  let step = 0;
+  const transient = createQuotaCache(dir, async () => ++step === 1
+    ? ready
+    : { status: 'unavailable', windows: [], message: 'Could not get subscription usage. Check your sign-in and connection.' }, { now: () => time });
+  await transient.update('claude');
+  time += AUTO_INTERVAL;
+  await transient.update('claude');
+  assert.equal(transient.entries.claude.status, 'stale');
+  assert.equal(transient.entries.claude.windows.length, 1);
+
+  // 2. Explicit signedOut flag clears cached reading immediately.
+  const signedOut = createQuotaCache(dir, async () => ({
+    status: 'unavailable', windows: [], signedOut: true,
+    message: 'Could not read subscription limits. Check that you are signed in to the tool.',
+  }), { now: () => time });
+  time += AUTO_INTERVAL;
+  await signedOut.update('claude');
+  assert.equal(signedOut.entries.claude.status, 'unavailable');
+  assert.deepEqual(signedOut.entries.claude.windows, []);
+
+  // 3. English sign-in error text also clears cached reading without needing signedOut: true.
+  let codexStep = 0;
+  const byMessage = createQuotaCache(dir, async () => ++codexStep === 1
+    ? ready
+    : { status: 'unavailable', windows: [], message: 'Sign-in required' }, { now: () => time });
+  await byMessage.update('codex');
+  assert.equal(byMessage.entries.codex.status, 'ready');
+  time += AUTO_INTERVAL;
+  await byMessage.update('codex');
+  assert.equal(byMessage.entries.codex.status, 'unavailable');
+  assert.deepEqual(byMessage.entries.codex.windows, []);
+});

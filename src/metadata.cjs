@@ -10,7 +10,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { validModel, validEffort } = require('./hook.cjs');
 const { DAY, UUID_RE, AGY_SURFACES, CODEX_INTERACTIVE_SOURCES, isObject, isUnderDir, providerConfigDir, createLru } = require('./shared.cjs');
-const { t, tp, phrase, intlLocale } = require('../media/i18n.js');
+const { t, tp, phrase, locale, intlLocale } = require('../media/i18n.js');
 
 const configDir = (provider, homeDir, env) => providerConfigDir(provider, { homeDir, env, fallbackRelative: true });
 
@@ -238,12 +238,15 @@ function add(view, provider, record, quantityLabel) {
   if (current.title || current.usage || current.execution || current.interruptedAt || current.turnInterruptedAt || current.agySource) view.sessions.set(key, current);
 }
 
-// template: {0} is how many sessions, {1} their formatted total.
-function groupUsage(records, template) {
+// one/other: {0} is how many sessions, {1} their formatted total (when sum !== 1).
+function groupUsage(records, one, other) {
   const measured = records.filter(r => amount(r.quantity));
   if (!measured.length) return;
   const sum = measured.reduce((acc, r) => acc + r.quantity, 0);
-  if (Number.isSafeInteger(sum)) return t(template, tp(measured.length, '{0} session', '{0} sessions'), format(sum));
+  if (Number.isSafeInteger(sum)) {
+    const sessions = tp(measured.length, '{0} session', '{0} sessions');
+    return sum === 1 ? t(one, sessions) : t(other, sessions, format(sum));
+  }
 }
 
 const codexIndexCache = createLru(8);
@@ -295,7 +298,7 @@ async function collectCodex(view, rows, base, executable) {
   }
   for (const record of records) add(view, 'codex', { ...record, title:codexTitle(record),
     execution:nativeExecution(record.model,record.effort,'setting') }, n => counted(n, phrase('1 token total'), phrase('{0} tokens total')));
-  const usage = groupUsage(records, phrase('{0} · {1} tokens total'));
+  const usage = groupUsage(records, phrase('{0} · 1 token total'), phrase('{0} · {1} tokens total'));
   if (usage) view.providerUsage.codex = usage;
 
   // Codex also updates this small title-only index for renames. Its most
@@ -367,7 +370,7 @@ async function collectAgy(view, rows, home, executable) {
   for (const record of records) {
     add(view, 'agy', record, n => counted(n, phrase('1 step in chat'), phrase('{0} steps in chat')));
   }
-  const usage = groupUsage(records, phrase('{0} · {1} steps run'));
+  const usage = groupUsage(records, phrase('{0} · 1 step run'), phrase('{0} · {1} steps run'));
   if (usage) view.providerUsage.agy = usage;
 }
 
@@ -750,14 +753,17 @@ async function livePidDirSnapshot(liveDir, limit = Infinity) {
 async function readClaudeStats(statsPath) {
   const stamp = await statStamp(statsPath);
   if (!stamp) return;
+  const lang = locale();
   const cached = claudeStatsCache.get(statsPath);
-  if (cached && cached.stamp === stamp) return cached.usage;
+  if (cached && cached.stamp === stamp && cached.lang === lang) return cached.usage;
   const item = await readJsonSafe(statsPath, 4 * 1024 * 1024);
   const usage = isObject(item) && typeof item.lastComputedDate === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/.test(item.lastComputedDate) && amount(item.totalMessages)
-    ? t('As of {0} · {1} messages total', item.lastComputedDate, format(item.totalMessages))
+    ? (item.totalMessages === 1
+      ? t('As of {0} · 1 message total', item.lastComputedDate)
+      : t('As of {0} · {1} messages total', item.lastComputedDate, format(item.totalMessages)))
     : undefined;
-  claudeStatsCache.set(statsPath, { stamp, usage });
+  claudeStatsCache.set(statsPath, { stamp, lang, usage });
   return usage;
 }
 
