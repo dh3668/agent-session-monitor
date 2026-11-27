@@ -407,7 +407,7 @@ private final class NotifierAppDelegate: NSObject, NSApplicationDelegate, UNUser
 
         let content = UNMutableNotificationContent()
         let title = (payload.title ?? "").trimmingCharacters(in: .newlines)
-        content.title = title.isEmpty ? "에이전트 세션 모니터" : title
+        content.title = title.isEmpty ? (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Agent Session Monitor") : title
         content.subtitle = (payload.subtitle ?? "").trimmingCharacters(in: .newlines)
         content.body = payload.body ?? ""
         if let group = payload.group, !group.isEmpty {

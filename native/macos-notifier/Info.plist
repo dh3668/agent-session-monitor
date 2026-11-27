@@ -3,9 +3,14 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key>
-  <string>ko</string>
+  <string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array>
+    <string>en</string>
+    <string>ko</string>
+  </array>
   <key>CFBundleDisplayName</key>
-  <string>에이전트 세션 모니터</string>
+  <string>Agent Session Monitor</string>
   <key>CFBundleExecutable</key>
   <string>AgentSessionNotifier</string>
   <key>CFBundleIconFile</key>
@@ -15,7 +20,7 @@
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>에이전트 세션 모니터</string>
+  <string>Agent Session Monitor</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

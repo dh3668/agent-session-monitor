@@ -49,6 +49,10 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 cp "$SCRIPT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ICONS_DIR/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+# The app name macOS shows follows the system language.
+for LPROJ in "$SCRIPT_DIR"/*.lproj; do
+  cp -R "$LPROJ" "$RESOURCES_DIR/"
+done
 
 "$SWIFTC" -O -swift-version 5 -target arm64-apple-macos12.0 "${SDK_ARGS[@]}" \
   -framework AppKit -framework UserNotifications \

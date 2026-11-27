@@ -8,6 +8,24 @@
 		<data>
 		p4X7R2zxavU3qKmPkp+pParQXfg=
 		</data>
+		<key>Resources/en.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			GSGFvOjvcWWUgvX1JkgBZ+xNLVU=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/ko.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			qdK56ubdpGoJcJkS8UCgcd0bKuk=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
 	</dict>
 	<key>files2</key>
 	<dict>
@@ -17,6 +35,24 @@
 			<data>
 			tFR8TCrwsAHdjnPd5oCNobja9hRd4fqEoRwTzGba5D0=
 			</data>
+		</dict>
+		<key>Resources/en.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			gg4Xb8+3xHTSrIcqNsd4Ebx2Z1gAmypZWYh4O7QnBeI=
+			</data>
+			<key>optional</key>
+			<true/>
+		</dict>
+		<key>Resources/ko.lproj/InfoPlist.strings</key>
+		<dict>
+			<key>hash2</key>
+			<data>
+			bEEu9mQzxQqR84sQKOZgK6yDqN8Qg40smctv31g5v8s=
+			</data>
+			<key>optional</key>
+			<true/>
 		</dict>
 	</dict>
 	<key>rules</key>

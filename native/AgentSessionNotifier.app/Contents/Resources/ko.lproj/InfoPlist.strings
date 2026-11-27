@@ -1,0 +1,3 @@
+/* The name macOS shows for the notifier in Notification Center and System Settings. */
+"CFBundleDisplayName" = "에이전트 세션 모니터";
+"CFBundleName" = "에이전트 세션 모니터";
