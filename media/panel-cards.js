@@ -6,6 +6,7 @@
     isWait, requestToken, toolKind, stepText,
     requestBlocks, requestSummary, workPhase, fileTargetOf,
   } = root.AgentSessionFormat;
+  const { t, tp, phrase } = root.AgentSessionI18n;
   const P = root.AgentSessionPanel;
   const {
     specFor, sourceText, navigable, when, quotaAlertText,
@@ -15,15 +16,16 @@
   const EXIT_PLAN_RE = /^exitplanmode$/i;
   const ENTER_PLAN_RE = /^enterplanmode$/i;
   const DIFF_SIGNS = { same: ' ', removed: '-', added: '+' };
-  const CODE_HEADER_LABELS = new Set(['실행할 명령', '패치 내용', '실행 계획', '새 셀 내용']);
-  const EXECUTION_FIELDS = [['모델', 'model'], ['추론 강도', 'effort']];
+  const CODE_HEADER_LABELS = [phrase('Command to run'), phrase('Patch'), phrase('Plan'), phrase('New cell content')];
+  const hasCodeHeader = label => CODE_HEADER_LABELS.some(key => t(key) === label);
+  const EXECUTION_FIELDS = [[phrase('Model: {0}'), 'model'], [phrase('Reasoning effort: {0}'), 'effort']];
 
   function codeBlock(value, label, words, withHeader) {
     const pre = element('pre', 'payload');
     pre.tabIndex = 0;
     pre.setAttribute('aria-label', label);
     for (const part of foldBlankRuns(value)) {
-      if (part.blank) { pre.append(element('span', 'line same', '⋯ 빈 줄 ' + part.blank + '개 ⋯')); continue; }
+      if (part.blank) { pre.append(element('span', 'line same', tp(part.blank, '⋯ {0} blank line ⋯', '⋯ {0} blank lines ⋯'))); continue; }
       for (const logical of (words ? visibleCommand : visible)(part.text).replace(/\n$/, '').split('\n')) {
         const line = element('span', 'line');
         if (!words) line.textContent = logical;
@@ -37,7 +39,7 @@
     const shell = element('div', 'code-shell');
     const bar = element('div', 'code-bar');
     const title = element('span', 'code-bar-title');
-    const barIcon = words ? 'command' : label === '실행 계획' ? 'plan' : 'file';
+    const barIcon = words ? 'command' : label === t('Plan') ? 'plan' : 'file';
     title.append(icon(barIcon, 'icon tiny'), document.createTextNode(label));
     bar.append(title, copyButton(value, label));
     shell.append(bar, pre);
@@ -47,7 +49,7 @@
   function patchBlock(lines, raw) {
     const pre = element('pre', 'payload change');
     pre.tabIndex = 0;
-    pre.setAttribute('aria-label', '패치 내용');
+    pre.setAttribute('aria-label', t('Patch'));
     if (lines.length) {
       for (const [kind, value] of lines) {
         if (kind === 'hunk') {
@@ -58,13 +60,13 @@
       }
     } else {
       const deleted = /^\*\*\* Delete File:/m.test(raw || '');
-      pre.append(element('span', 'line same', deleted ? '  (파일 삭제)' : '  (변경 없음)'));
+      pre.append(element('span', 'line same', '  ' + (deleted ? t('(file deleted)') : t('(no changes)'))));
     }
     const shell = element('div', 'code-shell');
     const bar = element('div', 'code-bar');
     const title = element('span', 'code-bar-title');
-    title.append(icon('patch', 'icon tiny'), document.createTextNode('패치 내용'));
-    bar.append(title, copyButton(raw || '', '패치 내용'));
+    title.append(icon('patch', 'icon tiny'), document.createTextNode(t('Patch')));
+    bar.append(title, copyButton(raw || '', t('Patch')));
     shell.append(bar, pre);
     return shell;
   }
@@ -77,9 +79,9 @@
       if (question.header) group.append(element('span', 'question-header', visible(question.header)));
       group.append(element('div', 'question', visible(question.question)));
       const notes = [];
-      if (question.multiSelect) notes.push('여러 개 고를 수 있습니다');
-      if (question.isOther) notes.push('직접 입력 가능');
-      if (!question.choices.length) notes.push('채팅에서 직접 답변을 입력하세요');
+      if (question.multiSelect) notes.push(t('You can pick more than one'));
+      if (question.isOther) notes.push(t('You can type your own'));
+      if (!question.choices.length) notes.push(t('Type your answer in the chat'));
       if (notes.length) group.append(element('div', 'question-note', notes.join(' · ')));
       if (question.choices.length) {
         const list = element('ol', 'choices readonly');
@@ -102,7 +104,7 @@
   function changeBlock(before, after, precomputedOps) {
     const pre = element('pre', 'payload change');
     pre.tabIndex = 0;
-    pre.setAttribute('aria-label', '변경 내용');
+    pre.setAttribute('aria-label', t('Changes'));
     const ops = precomputedOps || lineChanges(before ? before.split('\n') : [], after ? after.split('\n') : []);
     const keep = ops.map(([kind], at) => kind !== 'same' || (at > 0 && ops[at - 1]?.[0] !== 'same') || (ops[at + 1] && ops[at + 1][0] !== 'same'));
     let folded = false;
@@ -118,7 +120,7 @@
       folded = false;
       pre.append(element('span', 'line ' + kind, DIFF_SIGNS[kind] + ' ' + visible(value)));
     }
-    if (!hasChange) pre.append(element('span', 'line same', '  (변경 없음)'));
+    if (!hasChange) pre.append(element('span', 'line same', '  ' + t('(no changes)')));
     return pre;
   }
 
@@ -133,12 +135,12 @@
     const row = element('div', 'request-path-row');
     const line = element('div', 'request-path');
     const cut = shown.lastIndexOf('/') + 1;
-    const target = owner ? button('request-path-btn', openPath + ' 파일 열기') : element('span', '');
+    const target = owner ? button('request-path-btn', t('Open file {0}', openPath)) : element('span', '');
     if (owner) {
       target.dataset.action = 'openFile';
       target.dataset.target = owner.key;
       target.dataset.file = openPath;
-      target.title = openPath + '\n눌러서 에디터에서 열기';
+      target.title = openPath + '\n' + t('Click to open in the editor');
     }
     if (cut) target.append(breakable('path-dir', shown.slice(0, cut)));
     target.append(element('strong', 'path-file', inline(shown.slice(cut))));
@@ -148,7 +150,8 @@
       const badge = element('span', 'diff-stats');
       if (stats.added) badge.append(element('span', 'diff-add', '+' + stats.added));
       if (stats.removed) badge.append(element('span', 'diff-del', '−' + stats.removed));
-      badge.setAttribute('aria-label', stats.added + '줄 추가, ' + stats.removed + '줄 삭제');
+      badge.setAttribute('aria-label', tp(stats.added, '{0} line added', '{0} lines added') + ', ' +
+        tp(stats.removed, '{0} line removed', '{0} lines removed'));
       row.append(badge);
     }
     return row;
@@ -207,7 +210,7 @@
         fields = undefined;
         const warn = element('div', 'request-warning');
         warn.setAttribute('role', 'note');
-        warn.append(icon('warn', 'icon small'), element('span', '', '샌드박스 외부 실행 (' + block.name + ')'));
+        warn.append(icon('warn', 'icon small'), element('span', '', t('Runs outside the sandbox ({0})', block.name)));
         box.append(warn);
         continue;
       }
@@ -225,21 +228,22 @@
         callout.setAttribute('role', 'note');
         callout.append(
           icon('warn', 'icon small'),
-          element('span', '', '요청 내용이 커서 앞부분만 표시합니다 (' + byteSizeText(block.shownBytes) + ' / ' + byteSizeText(block.totalBytes) + ') · 전체 내용을 채팅에서 확인 후 처리하세요')
+          element('span', '', t('This request is large, so only the beginning is shown ({0} / {1}) · Review all of it in the chat before you act',
+            byteSizeText(block.shownBytes), byteSizeText(block.totalBytes)))
         );
         box.append(callout);
       } else if (block.kind === 'questions') box.append(...readonlyQuestions(block.questions));
       else if (block.kind === 'note') box.append(element('div', 'request-note', visible(block.text)));
       else if (block.kind === 'path') box.append(pathLine(block.text, owner, block.stats || pathStats.get(idx), block.file, cwd));
       else if (block.kind === 'patch') box.append(patchBlock(block.lines, block.raw));
-      else if (block.kind === 'code') box.append(codeBlock(block.text, block.label, block.label === '실행할 명령', CODE_HEADER_LABELS.has(block.label)));
+      else if (block.kind === 'code') box.append(codeBlock(block.text, block.label, block.label === t('Command to run'), hasCodeHeader(block.label)));
       else if (block.kind === 'change') box.append(changeBlock(block.before, block.after, changeOps.get(idx)));
       else if (block.kind === 'long') box.append(element('div', 'field-name', visible(block.name)), codeBlock(block.text, block.name, false, false));
       else if (block.kind === 'content') {
         const note = element('div', 'request-warning');
-        note.append(icon('warn', 'icon small'), element('span', '', block.text ? '파일 전체를 아래 내용으로 바꿉니다.' : '파일을 비웁니다. 새 내용이 없습니다.'));
+        note.append(icon('warn', 'icon small'), element('span', '', block.text ? t('Replaces the whole file with the content below.') : t('Empties the file. There is no new content.')));
         box.append(note);
-        if (block.text) box.append(codeBlock(block.text, '새 파일 내용', false, false));
+        if (block.text) box.append(codeBlock(block.text, t('New file content'), false, false));
       }
     }
     return box;
@@ -247,28 +251,24 @@
 
   function requestHeadline(owner) {
     const request = owner.action;
-    if (request?.kind === 'question') return request.questions.length > 1 ? '질문 ' + request.questions.length + '개' : '질문';
+    if (request?.kind === 'question') return request.questions.length > 1 ? t('{0} questions', request.questions.length) : t('Question');
     if (!request) {
       const qs = getCachedRequest(owner.preview?.tool, owner.preview?.detail, owner.preview?.cwd).questions;
-      if (qs) return qs.length > 1 ? '질문 ' + qs.length + '개' : '질문';
+      if (qs) return qs.length > 1 ? t('{0} questions', qs.length) : t('Question');
     }
     const tool = request ? request.tool : owner.preview.tool;
-    if (EXIT_PLAN_RE.test(tool)) {
-      return ['계획 승인', request?.pendingCount > 1 && '외 ' + (request.pendingCount - 1) + '건'].filter(Boolean).join(' · ');
-    }
-    if (ENTER_PLAN_RE.test(tool)) {
-      return ['계획 모드', request?.pendingCount > 1 && '외 ' + (request.pendingCount - 1) + '건'].filter(Boolean).join(' · ');
-    }
+    const more = request?.pendingCount > 1 && t('+{0} more', request.pendingCount - 1);
+    if (EXIT_PLAN_RE.test(tool)) return [t('Plan approval'), more].filter(Boolean).join(' · ');
+    if (ENTER_PLAN_RE.test(tool)) return [t('Plan mode'), more].filter(Boolean).join(' · ');
     const label = toolKind(tool).label;
-    return [label || '요청', tool && tool !== label && tool, request?.pendingCount > 1 && '외 ' + (request.pendingCount - 1) + '건']
-      .filter(Boolean).join(' · ');
+    return [label || t('Request'), tool && tool !== label && tool, more].filter(Boolean).join(' · ');
   }
 
   function executionNote(row, now = Date.now()) {
     const e = row.execution || {};
     return EXECUTION_FIELDS.map(([label, name]) => {
       const stamp = when(e[name + 'At'], now);
-      return label + ' ' + (e[name] || '미확인') + (e[name] ? ' · ' + sourceText(e[name + 'Source']) +
+      return t(label, e[name] || t('Unknown')) + (e[name] ? ' · ' + sourceText(e[name + 'Source']) +
         (stamp ? ' · ' + stamp : '') : '');
     }).join('\n');
   }
@@ -280,27 +280,27 @@
     const box = element('div', 'request');
     box.dataset.request = token;
     box.setAttribute('role', 'group');
-    box.setAttribute('aria-label', owner.title + ' 요청');
+    box.setAttribute('aria-label', t('{0} request', owner.title));
     const queue = ctx.derived.queue;
     if (queue.length >= 2) {
       const pos = queue.findIndex(r => ctx.derived.tokenOf.get(r.key) === token);
       if (pos >= 0) {
         const triage = element('div', 'request-triage');
         const pill = element('span', 'queue-pill');
-        pill.append(element('span', 'queue-label', '대기 요청'), element('span', 'queue-counter', (pos + 1) + ' / ' + queue.length));
+        pill.append(element('span', 'queue-label', t('Pending requests')), element('span', 'queue-counter', (pos + 1) + ' / ' + queue.length));
         const stepper = element('div', 'queue-stepper');
         stepper.setAttribute('role', 'group');
-        stepper.setAttribute('aria-label', '대기 요청 전환');
-        const prevBtn = button('queue-step', '이전 대기 요청');
+        stepper.setAttribute('aria-label', t('Switch pending request'));
+        const prevBtn = button('queue-step', t('Previous pending request'));
         prevBtn.dataset.control = 'queueStep';
         prevBtn.dataset.direction = 'prev';
-        prevBtn.title = '이전 대기 요청';
-        prevBtn.append(icon('back', 'icon tiny'), element('span', 'queue-step-label', '이전'));
-        const nextBtn = button('queue-step', '다음 대기 요청');
+        prevBtn.title = t('Previous pending request');
+        prevBtn.append(icon('back', 'icon tiny'), element('span', 'queue-step-label', t('Previous')));
+        const nextBtn = button('queue-step', t('Next pending request'));
         nextBtn.dataset.control = 'queueStep';
         nextBtn.dataset.direction = 'next';
-        nextBtn.title = '다음 대기 요청';
-        nextBtn.append(element('span', 'queue-step-label', '다음'), icon('turn', 'icon tiny'));
+        nextBtn.title = t('Next pending request');
+        nextBtn.append(element('span', 'queue-step-label', t('Next')), icon('turn', 'icon tiny'));
         stepper.append(prevBtn, nextBtn);
         triage.append(pill, stepper);
         box.append(triage);
@@ -316,7 +316,7 @@
         : '';
     const decide = (action, caption, style, keys) => {
       const activeSending = sendingAction === action;
-      const shownCaption = activeSending ? '전송 중…' : caption;
+      const shownCaption = activeSending ? t('Sending…') : caption;
       const control = actionButton(owner, action, shownCaption, style + (activeSending ? ' is-sending' : ''));
       control.title = caption + ' · ' + keys;
       control.setAttribute('aria-label', [owner.title, shownCaption, about].filter(Boolean).map(visible).join(' · '));
@@ -331,34 +331,36 @@
       const isQuestion = owner.status === 'input' || Boolean(cached.questions);
       const hasChoices = Boolean(cached.questions?.some(q => q.choices.length));
       const providerName = specFor(owner.provider)[1];
-      const previewTarget = owner.viaParent ? '부모 채팅' : providerName;
+      const previewTarget = owner.viaParent ? t('the parent chat') : providerName;
       const previewVerb = hasChoices
-        ? '직접 선택'
+        ? t('Choose an option')
         : isQuestion
-          ? '직접 응답'
+          ? t('Answer it')
           : EXIT_PLAN_RE.test(owner.preview.tool)
-            ? '계획 승인'
+            ? t('Approve the plan')
             : ENTER_PLAN_RE.test(owner.preview.tool)
-              ? '계획 모드 확인'
-              : '직접 처리';
+              ? t('Confirm plan mode')
+              : t('Handle it');
       const banner = element('div', 'preview-banner');
       banner.setAttribute('role', 'note');
-      const bannerText = (navigable(owner)
-        ? '읽기 전용 미리보기 · ' + previewTarget + '에서 ' + previewVerb
-        : '읽기 전용 미리보기 · 원래 채팅에서 ' + previewVerb);
+      const bannerText = navigable(owner)
+        ? t('Read-only preview · {0} in {1}', previewVerb, previewTarget)
+        : t('Read-only preview · {0} in the original chat', previewVerb);
       banner.append(icon('read', 'icon tiny'), element('span', 'preview-banner-text', bannerText));
       box.append(banner);
       const content = requestContent(owner.preview.tool, owner.preview.detail, owner.preview.cwd, owner);
       if (!content.childNodes.length) {
         if (EXIT_PLAN_RE.test(owner.preview.tool)) {
-          content.append(element('div', 'request-note', '작성된 실행 계획을 채팅에서 확인하고 승인해 주세요.'));
+          content.append(element('div', 'request-note', t('Review and approve the written plan in the chat.')));
         } else if (ENTER_PLAN_RE.test(owner.preview.tool)) {
-          content.append(element('div', 'request-note', '계획 모드로 전환할지 채팅에서 확인해 주세요.'));
+          content.append(element('div', 'request-note', t('Confirm in the chat whether to switch to plan mode.')));
         }
       }
       box.append(content);
       if (navigable(owner)) {
-        const ctaLabel = (owner.viaParent ? '부모 채팅' : providerName + ' 채팅') + (isQuestion ? '에서 답하기' : '에서 확인하기');
+        const ctaLabel = owner.viaParent
+          ? (isQuestion ? t('Answer in the parent chat') : t('Review in the parent chat'))
+          : (isQuestion ? t('Answer in {0}', providerName) : t('Review in {0}', providerName));
         const openChat = actionButton(owner, 'review', ctaLabel, 'preview-cta');
         openChat.append(icon('out', 'icon tiny'));
         actions.append(openChat);
@@ -369,13 +371,13 @@
       const summaryNode = element('span', 'sr-only', [requestHeadline(owner), about].filter(Boolean).map(visible).join(' · '));
       summaryNode.id = 'request-summary';
       box.append(summaryNode);
-      for (const control of [request.deny && decide('deny', '거절', 'secondary', ctx.chord.deny),
-        request.allow && decide('approve', '한 번 허용', 'primary', ctx.chord.allow)]) {
+      for (const control of [request.deny && decide('deny', t('Deny'), 'secondary', ctx.chord.deny),
+        request.allow && decide('approve', t('Allow once'), 'primary', ctx.chord.allow)]) {
         if (!control) continue;
         control.setAttribute('aria-describedby', summaryNode.id);
         actions.append(control);
       }
-      hint = [request.allow && ctx.chord.allow + ' 허용', request.deny && ctx.chord.deny + ' 거절'].filter(Boolean).join(' · ');
+      hint = [request.allow && t('{0} Allow', ctx.chord.allow), request.deny && t('{0} Deny', ctx.chord.deny)].filter(Boolean).join(' · ');
     } else {
       const direct = request.questions.length === 1 && !request.questions[0].multiSelect;
       const draft = ctx.draftFor(token, request.questions);
@@ -387,7 +389,7 @@
         group.setAttribute('aria-label', question.question);
         if (question.header) group.append(element('span', 'question-header', visible(question.header)));
         group.append(element('div', 'question', visible(question.question)));
-        if (question.multiSelect) group.append(element('div', 'question-note', '여러 개 고를 수 있습니다'));
+        if (question.multiSelect) group.append(element('div', 'question-note', t('You can pick more than one')));
         const list = element('div', 'choices');
         question.choices.forEach((choice, index) => {
           number++;
@@ -419,11 +421,11 @@
         box.append(group);
       });
       if (!direct) {
-        const send = decide('answer', '답변 보내기', 'primary', ctx.chord.allow);
+        const send = decide('answer', t('Send answer'), 'primary', ctx.chord.allow);
         send.disabled = expired || isSending || draft.some(picked => !picked.size);
         actions.append(send);
       }
-      hint = direct ? '숫자 키로 선택' : '숫자 키로 선택 · ' + ctx.chord.allow + ' 보내기';
+      hint = direct ? t('Press a number to choose') : t('Press a number to choose · {0} Send', ctx.chord.allow);
     }
     if (actions.childNodes.length === 1) actions.classList.add('single');
     if (actions.childNodes.length) box.append(actions);
@@ -435,7 +437,7 @@
     }
     if (request) {
       const foot = element('div', 'request-foot');
-      const link = actionButton(owner, 'defer', '채팅에서 열기', 'text-button');
+      const link = actionButton(owner, 'defer', t('Open in chat'), 'text-button');
       link.append(icon('out', 'icon tiny'));
       foot.append(link, element('span', 'request-hint', hint));
       box.append(foot);
@@ -448,7 +450,7 @@
     const now = ctx.now;
     const box = element('div', 'row-menu');
     box.setAttribute('role', 'region');
-    box.setAttribute('aria-label', row.title + ' 작업 요약');
+    box.setAttribute('aria-label', t('{0} work summary', row.title));
     let execNote;
     const getExecNote = () => execNote ?? (execNote = executionNote(row, now));
 
@@ -460,7 +462,7 @@
     pill.append(element('span', 'phase-dot'), document.createTextNode(phase.label));
     head.append(pill);
     if (row.updatedAt) {
-      const stamp = element('span', 'story-stamp', '마지막 활동 ' + when(row.updatedAt, now));
+      const stamp = element('span', 'story-stamp', t('Last active {0}', when(row.updatedAt, now)));
       stamp.title = getExecNote();
       head.append(stamp);
     }
@@ -487,7 +489,7 @@
     if (quotaHint) {
       const banner = element('div', 'story-banner is-quota');
       banner.append(icon('warn', 'icon tiny'), element('span', 'story-banner-text', quotaAlertText(quotaHint, false, now)));
-      const openQuota = button('text-button story-banner-link', specFor(row.provider)[1] + ' 구독 한도 보기', '한도 보기');
+      const openQuota = button('text-button story-banner-link', t('View {0} subscription limits', specFor(row.provider)[1]), t('View limits'));
       openQuota.dataset.control = 'quotaTile';
       openQuota.dataset.provider = row.provider;
       banner.append(openQuota);
@@ -495,10 +497,10 @@
     } else if (row.quiet) {
       const banner = element('div', 'story-banner is-quiet');
       const quietMsg = row.status === 'approval' || row.status === 'input'
-        ? '요청이 거절되었거나 응답이 없어 대기 상태가 멈췄습니다. 대화를 열어 확인하거나 숨길 수 있습니다.'
+        ? t('The request was declined or got no response, so it is no longer waiting. Open the chat to check, or hide it.')
         : row.isSubagent
-          ? '오랫동안 응답이 없어 종료된 것으로 보입니다. 정리하거나 숨길 수 있습니다.'
-          : '15분 이상 신호가 없습니다. 중단된 작업이라면 숨기거나 대화를 열어 확인하세요.';
+          ? t('No response for a long time, so it looks finished. You can clean it up or hide it.')
+          : t('No signal for over 15 minutes. If the work stopped, hide it or open the chat to check.');
       banner.append(element('span', 'story-banner-text', quietMsg));
       box.append(banner);
     }
@@ -510,12 +512,12 @@
       const p = element('p', 'detail-text' + (isExpanded ? ' expanded' : ''), visible(row.prompt));
       card.append(p);
       if (row.prompt.length > 110 || row.prompt.includes('\n')) {
-        const moreBtn = button('text-button', isExpanded ? '요청 접기' : '요청 전체 보기', isExpanded ? '접기' : '전체 보기');
+        const moreBtn = button('text-button', isExpanded ? t('Collapse request') : t('Show full request'), isExpanded ? t('Collapse') : t('Show all'));
         moreBtn.dataset.control = 'expandPrompt';
         moreBtn.dataset.target = row.key;
         card.append(moreBtn);
       }
-      part('prompt', '요청', card, copyButton(row.prompt, '요청'));
+      part('prompt', t('Request'), card, copyButton(row.prompt, t('Request')));
     }
 
     // 2. Plan Checklist
@@ -526,7 +528,7 @@
       const pct = total ? Math.round((done / total) * 100) : 0;
       const bar = element('div', 'plan-progress-bar');
       bar.setAttribute('role', 'progressbar');
-      bar.setAttribute('aria-label', '작업 계획 진행률');
+      bar.setAttribute('aria-label', t('Plan progress'));
       bar.setAttribute('aria-valuemin', '0');
       bar.setAttribute('aria-valuemax', '100');
       bar.setAttribute('aria-valuenow', String(pct));
@@ -549,18 +551,18 @@
         list.append(li);
       });
       wrap.append(list);
-      part('plan', '작업 계획', wrap, element('span', 'detail-stat', done + '/' + total + ' · ' + pct + '%'));
+      part('plan', t('Work plan'), wrap, element('span', 'detail-stat', done + '/' + total + ' · ' + pct + '%'));
     }
 
     // 3. Modified Files (clickable to open directly in VS Code!)
     if (row.changedFiles?.length) {
       const chips = element('div', 'file-chips');
       for (const file of row.changedFiles) {
-        const chip = button('file-chip', file + ' 에디터에서 열기');
+        const chip = button('file-chip', t('Open {0} in the editor', file));
         chip.dataset.action = 'openFile';
         chip.dataset.target = row.key;
         chip.dataset.file = file;
-        chip.title = file + '\n눌러서 에디터에서 열기';
+        chip.title = file + '\n' + t('Click to open in the editor');
         chip.append(icon('file', 'icon tiny'));
         const text = element('span', 'file-chip-text');
         const cut = file.lastIndexOf('/') + 1;
@@ -570,9 +572,9 @@
         chips.append(chip);
       }
       const statText = row.changed && row.changed > row.changedFiles.length
-        ? row.changed + '개 중 최근 ' + row.changedFiles.length + '개'
-        : (row.changed || row.changedFiles.length) + '개';
-      part('files', '변경한 파일', chips, element('span', 'detail-stat', statText));
+        ? t('Latest {1} of {0}', row.changed, row.changedFiles.length)
+        : tp(row.changed || row.changedFiles.length, '{0} file', '{0} files');
+      part('files', t('Changed files'), chips, element('span', 'detail-stat', statText));
     }
 
     // 4. Live Step Timeline
@@ -590,38 +592,38 @@
         const shownLabel = visible(stepLabel);
         const openable = fileTargetOf(step);
         if (openable) {
-          const link = button('step-link', stepLabel + ' 파일 열기', shownLabel);
+          const link = button('step-link', t('Open file {0}', stepLabel), shownLabel);
           link.dataset.action = 'openFile';
           link.dataset.target = row.key;
           link.dataset.file = openable;
-          link.title = openable + '\n눌러서 에디터에서 열기';
+          link.title = openable + '\n' + t('Click to open in the editor');
           mainText.append(link);
         } else {
           mainText.append(element('span', 'step-text', shownLabel));
         }
-        if (step.failed) mainText.append(element('span', 'step-fail', '실패'));
+        if (step.failed) mainText.append(element('span', 'step-fail', t('Failed')));
         entry.append(node, mainText);
         if (step.at) {
-          const time = element('time', 'step-time', sinceText('ago', step.at, now) || '방금');
+          const time = element('time', 'step-time', sinceText('ago', step.at, now) || t('just now'));
           time.dataset.since = step.at;
           time.dataset.kind = 'ago';
-          time.dataset.fallback = '방금';
+          time.dataset.fallback = t('just now');
           entry.append(time);
         }
         list.append(entry);
       });
-      part('steps', steps.length < (row.steps || []).length ? '이전 단계' : '작업 흐름', list);
+      part('steps', steps.length < (row.steps || []).length ? t('Earlier steps') : t('Activity'), list);
     }
 
     // 5. Last Reply
     if (row.reply && (row.status === 'done' || row.status === 'error')) {
       const card = element('div', 'detail-card ' + (row.status === 'error' ? 'reply-error' : 'reply-done'));
       card.append(element('p', 'detail-text expanded', visible(row.reply)));
-      part('reply', row.status === 'error' ? '오류 내용' : '마지막 응답', card, copyButton(row.reply, '응답'));
+      part('reply', row.status === 'error' ? t('Error details') : t('Last reply'), card, copyButton(row.reply, t('Reply')));
     }
 
     // 6. Metadata & Action Bar
-    const facts = [row.execution?.model, row.execution?.effort && '추론 ' + row.execution.effort, row.usage].filter(Boolean);
+    const facts = [row.execution?.model, row.execution?.effort && t('Effort {0}', row.execution.effort), row.usage].filter(Boolean);
     if (facts.length) {
       const line = element('div', 'detail-meta', facts.join(' · '));
       line.title = getExecNote();
@@ -629,29 +631,29 @@
     }
     const tools = element('div', 'detail-actions');
     if (navigable(row)) {
-      const openBtn = actionButton(row, isWait(row) ? 'review' : 'open', '대화 열기', 'mini accent');
+      const openBtn = actionButton(row, isWait(row) ? 'review' : 'open', t('Open chat'), 'mini accent');
       openBtn.append(icon('out', 'icon tiny'));
       tools.append(openBtn);
     }
     if (row.replyUnread) {
-      const seen = actionButton(row, 'markSeen', '읽음 표시', 'mini');
+      const seen = actionButton(row, 'markSeen', t('Mark as read'), 'mini');
       seen.dataset.replyAt = row.replyAt;
       tools.append(seen);
     }
     if (row.status === 'error' && !row.errorAcked && row.updatedAt) {
-      const ack = actionButton(row, 'ackError', '확인함', 'mini');
+      const ack = actionButton(row, 'ackError', t('Acknowledge'), 'mini');
       ack.dataset.updatedAt = row.updatedAt;
-      ack.title = '확인 필요 목록에서 내리고 이전 대화에 유지합니다.';
+      ack.title = t('Moves it out of Needs attention and keeps it under Earlier.');
       tools.append(ack);
     }
     if (!row.isSubagent) {
-      const pin = actionButton(row, 'setPinned', row.pinned ? '고정 해제' : '고정', 'mini');
+      const pin = actionButton(row, 'setPinned', row.pinned ? t('Unpin') : t('Pin'), 'mini');
       pin.dataset.value = String(!row.pinned);
       tools.append(pin);
     }
-    tools.append(actionButton(row, 'rename', '이름 변경', 'mini'));
+    tools.append(actionButton(row, 'rename', t('Rename'), 'mini'));
     if ((row.status !== 'working' && row.status !== 'approval' && row.status !== 'input') || row.quiet) {
-      tools.append(actionButton(row, 'dismiss', '숨기기', 'mini'));
+      tools.append(actionButton(row, 'dismiss', t('Hide'), 'mini'));
     }
     box.append(tools);
     return box;

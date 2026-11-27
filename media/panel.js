@@ -7,6 +7,7 @@
     sinceText, remainingText, resetInText, visible, isWait,
     requestToken, dismissKey, requestOrder, errorLabel,
   } = globalThis.AgentSessionFormat;
+  const { t } = globalThis.AgentSessionI18n;
   const {
     providers, shortProviders, defaultOrder, specFor, resetLabel,
     element, button, brand, flashCopied, reconcile,
@@ -269,7 +270,7 @@
     const scroller = element('div', 'scroll-region');
     scroller.dataset.mode = quotaOverview ? 'quotas' : 'sessions';
     scroller.setAttribute('role', 'region');
-    scroller.setAttribute('aria-label', quotaOverview ? '구독 한도 상세' : '작업 폴더 세션');
+    scroller.setAttribute('aria-label', quotaOverview ? t('Subscription limit details') : t('Workspace sessions'));
     scroller.tabIndex = 0;
     const shownRows = quotaOverview || !loaded ? [] : derived.filtered;
     const localFiltered = lens !== 'all' || providerFilter !== 'all' || Boolean(searchQuery.trim());
@@ -298,31 +299,31 @@
       if (!quotaOverview && !shownRows.length) {
         if (!state.hasWorkspace) {
           if (state.isRemoteWorkspace) {
-            scroller.append(emptyState('folder', '로컬 작업 폴더에서 사용할 수 있습니다', '원격 창에서는 로컬 에이전트 세션을 모니터링할 수 없습니다.'));
+            scroller.append(emptyState('folder', t('Available in local folders'), t('A remote window cannot monitor local agent sessions.')));
           } else {
-            scroller.append(emptyState('folder', '작업 폴더를 열어 주세요', 'VS Code에서 폴더를 열면 그 폴더의 에이전트 세션이 여기에 모입니다.'));
+            scroller.append(emptyState('folder', t('Open a folder'), t('Open a folder in VS Code and its agent sessions gather here.')));
           }
         } else if (localFiltered && state.sessions.length) {
-          const reset = button('mini accent', '필터 초기화', '전체 세션 보기');
+          const reset = button('mini accent', t('Reset filters'), t('Show all sessions'));
           reset.dataset.control = 'resetFilters';
-          const title = searchQuery.trim() ? '일치하는 세션이 없습니다' : lens === 'attention' ? '확인할 세션이 없습니다' : '진행 중인 작업이 없습니다';
-          const desc = searchQuery.trim() ? '다른 검색어나 에이전트 필터를 시도해 보세요.' : '모든 대기 요청을 처리했거나 진행 중인 세션이 없습니다.';
+          const title = searchQuery.trim() ? t('No matching sessions') : lens === 'attention' ? t('Nothing needs attention') : t('No work in progress');
+          const desc = searchQuery.trim() ? t('Try a different search or agent filter.') : t('Every waiting request is handled, or no session is running.');
           scroller.append(emptyState(searchQuery.trim() ? 'search' : 'check', title, desc, [reset]));
         } else if (state.preferences?.attentionOnly) {
-          scroller.append(emptyState('check', '모두 확인했습니다', '답변이나 승인을 기다리는 세션이 없습니다.'));
+          scroller.append(emptyState('check', t('All caught up'), t('No session is waiting for an answer or approval.')));
         } else if (state.hiddenCompleted) {
-          scroller.append(emptyState('check', '완료된 세션을 숨겼습니다', '정렬 메뉴에서 다시 표시할 수 있습니다.'));
+          scroller.append(emptyState('check', t('Finished sessions are hidden'), t('You can show them again from Sort & Filter.')));
         } else {
           const launchers = providers
             .filter(([id]) => state.connections?.[id] !== 'absent')
             .map(([id, name, mono]) => {
-              const pill = button('launch-pill', name + ' 새 세션 시작');
+              const pill = button('launch-pill', t('Start a new {0} session', name));
               pill.dataset.action = 'start';
               pill.dataset.provider = id;
-              pill.append(brand(id, mono), document.createTextNode(shortProviders[id] + ' 시작'));
+              pill.append(brand(id, mono), document.createTextNode(t('Start {0}', shortProviders[id])));
               return pill;
             });
-          scroller.append(emptyState('inbox', '아직 세션이 없습니다', '아래에서 에이전트를 바로 시작하면 작업 흐름이 실시간으로 표시됩니다.', launchers));
+          scroller.append(emptyState('inbox', t('No sessions yet'), t('Start an agent below and its work shows up here as it happens.'), launchers));
         }
       }
     }
@@ -526,7 +527,7 @@
         { duration: 240, easing: 'cubic-bezier(.22, 1, .36, 1)' });
     }
     const token = control.closest('.request')?.dataset.request;
-    const message = '방금 나타났거나 움직인 요청입니다. 확인하고 다시 눌러 주세요.';
+    const message = t('This request just appeared or moved. Check it, then press again.');
     if (token) {
       refuseNotice = { token, message };
       clearTimeout(refuseTimer);
@@ -558,6 +559,11 @@
     }
   }
 
+  // A block cut off at the bottom says so in its own words; the stylesheet shows them.
+  function clip(block, clipped) {
+    block.classList.toggle('clipped', clipped);
+    if (clipped) block.dataset.more = t('More below · Scroll to the end to review');
+  }
   // Batched reads-before-writes to avoid layout thrashing across multiple code/diff blocks.
   function markClipped() {
     const blocks = main.querySelectorAll('.payload');
@@ -567,7 +573,7 @@
       const b = blocks[i];
       states[i] = b.scrollHeight - b.clientHeight - b.scrollTop > 2;
     }
-    for (let i = 0; i < blocks.length; i++) blocks[i].classList.toggle('clipped', states[i]);
+    for (let i = 0; i < blocks.length; i++) clip(blocks[i], states[i]);
   }
   new ResizeObserver(markClipped).observe(main);
 
@@ -606,7 +612,7 @@
   main.addEventListener('scroll', e => {
     if (e.target.matches?.('.payload')) {
       const b = e.target;
-      b.classList.toggle('clipped', b.scrollHeight - b.clientHeight - b.scrollTop > 2);
+      clip(b, b.scrollHeight - b.clientHeight - b.scrollTop > 2);
       return;
     }
     trackCard(performance.now() < userScrollUntil);
@@ -1033,7 +1039,8 @@
     for (const node of main.querySelectorAll('[data-reset-at]')) {
       const at = Number(node.dataset.resetAt);
       const inText = resetInText(at, now);
-      const value = (inText ? inText + ' · ' : '') + resetLabel(at, now) + ' 초기화';
+      const shown = resetLabel(at, now);
+      const value = inText ? t('Resets {0} · {1}', inText, shown) : t('Resets at {0}', shown);
       if (node.textContent !== value) node.textContent = value;
     }
   }
@@ -1085,20 +1092,20 @@
       for (const row of data.sessions) {
         const old = prior.get(row.key);
         if (isWait(row) && (old?.status !== row.status || requestToken(old) !== requestToken(row))) {
-          notices.push(visible(row.title) + ' · ' + (row.status === 'input' ? '답변 대기' : '승인 대기'));
+          notices.push(visible(row.title) + ' · ' + (row.status === 'input' ? t('Answer needed') : t('Approval needed')));
         } else if (row.replyUnread && row.status === 'done' && old?.replyAt !== row.replyAt) {
-          notices.push(visible(row.title) + ' · 새 응답 도착');
+          notices.push(visible(row.title) + ' · ' + t('New reply received'));
         } else if (row.status === 'error' && !row.errorAcked && old?.status !== 'error') {
           notices.push(visible(row.title) + ' · ' + errorLabel(row.errorReason));
         }
       }
-      if (data.scanError && data.scanError !== prevScanError) notices.push('오류 · ' + visible(data.scanError));
+      if (data.scanError && data.scanError !== prevScanError) notices.push(t('Error · {0}', visible(data.scanError)));
       if (notices.length) {
-        const summary = notices.slice(0, 2).join(', ') + (notices.length > 2 ? ' 외 ' + (notices.length - 2) + '건' : '');
+        const summary = notices.slice(0, 2).join(', ') + (notices.length > 2 ? ' ' + t('+{0} more', notices.length - 2) : '');
         announceStatus(summary);
       }
     } else if (data.scanError) {
-      announceStatus('오류 · ' + visible(data.scanError));
+      announceStatus(t('Error · {0}', visible(data.scanError)));
     }
     const currentTokens = new Set();
     let revealed = false;

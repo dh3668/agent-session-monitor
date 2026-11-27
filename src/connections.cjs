@@ -3,13 +3,14 @@
 const path = require('node:path');
 const { PROVIDERS } = require('./model.cjs');
 const { VENDORS } = require('./shared.cjs');
+const { t, phrase } = require('../media/i18n.js');
 
 const HOOK_LABELS = Object.freeze({
-  connected: '연결됨',
-  untrusted: '신뢰 필요 (/hooks)',
-  unverified: '훅 신뢰 상태 확인 필요',
-  update: '업데이트 필요',
-  missing: '연결 안 됨',
+  connected: phrase('Connected'),
+  untrusted: phrase('Needs trust (/hooks)'),
+  unverified: phrase('Hook trust needs checking'),
+  update: phrase('Update needed'),
+  missing: phrase('Not connected'),
 });
 
 function createConnections({
@@ -101,16 +102,16 @@ function createConnections({
 
   async function showTrustGuide(provider) {
     if (provider !== 'codex') return;
-    const copy = '/hooks 복사';
-    const recheck = '다시 확인';
+    const copy = t('Copy /hooks');
+    const recheck = t('Check Again');
     const picked = await vscode.window.showInformationMessage(
-      'Codex CLI에서 /hooks를 실행해 agent-session-monitor 훅의 신뢰 상태를 확인한 뒤 다시 확인을 눌러 주세요.',
+      t('Run /hooks in the Codex CLI, make sure the agent-session-monitor hooks are trusted, then press Check Again.'),
       copy,
       recheck,
     );
     if (picked === copy && vscode.env?.clipboard?.writeText) {
       await settle(vscode.env.clipboard.writeText('/hooks'));
-      void settle(vscode.window.showInformationMessage('"/hooks" 명령을 클립보드에 복사했습니다. Codex CLI에 붙여 넣어 훅을 신뢰해 주세요.'));
+      void settle(vscode.window.showInformationMessage(t('Copied "/hooks" to the clipboard. Paste it into the Codex CLI and trust the hooks.')));
     } else if (picked === recheck) {
       await refreshConnections({ force: true });
     }
@@ -135,8 +136,9 @@ function createConnections({
 
   async function configure(action, provider) {
     const install = action === 'install';
-    const done = install ? '연결 설정을 저장했습니다.' : '상태 훅 연결을 해제했습니다.';
-    const failed = id => PROVIDERS[id] + ' 연결 설정을 바꾸지 못했습니다. ';
+    const done = install ? t('Saved the connection settings.') : t('Disconnected the status hooks.');
+    const doneFor = names => install ? t('{0}: connection settings saved.', names) : t('{0}: status hooks disconnected.', names);
+    const failed = id => t('Could not change the {0} connection settings.', PROVIDERS[id]) + ' ';
     if (Object.hasOwn(PROVIDERS, provider)) {
       const [{ result, error }] = await applyHooks(action, [provider]);
       if (error) void settle(vscode.window.showErrorMessage(failed(provider) + reason(error)));
@@ -149,18 +151,18 @@ function createConnections({
       const state = Object.hasOwn(HOOK_LABELS, hookStates[id] ?? '') ? hookStates[id] : 'missing';
       const picked = install ? state === 'update' || (state === 'missing' && installed(id) && !context.globalState.get('connectMuted:' + id)) :
         state !== 'missing';
-      return { id, label, description: HOOK_LABELS[state] + (installed(id) ? '' : ' · VS Code 확장 없음'), picked };
+      return { id, label, description: t(HOOK_LABELS[state]) + (installed(id) ? '' : ' · ' + t('VS Code extension not installed')), picked };
     });
     const chosen = await vscode.window.showQuickPick(items, { canPickMany: true,
-      title: install ? '상태를 연결할 에이전트' : '연결을 해제할 에이전트',
-      placeHolder: install ? '선택한 도구에 상태 훅을 설치하거나 갱신합니다.' : '선택한 도구에서 이 확장의 상태 훅을 제거합니다.' });
+      title: install ? t('Agents to connect') : t('Agents to disconnect'),
+      placeHolder: install ? t('Installs or updates the status hooks in the selected tools.') : t("Removes this extension's status hooks from the selected tools.") });
     const selected = Array.isArray(chosen) ? chosen.map(item => item?.id).filter(id => Object.hasOwn(PROVIDERS, id)) : [];
     if (!selected.length) return;
     const outcomes = await applyHooks(action, selected);
     await refreshConnections({ force: true });
     const succeeded = outcomes.filter(outcome => !outcome.error);
     const parts = [];
-    if (succeeded.length) parts.push(succeeded.map(outcome => PROVIDERS[outcome.provider]).join(', ') + ' ' + done);
+    if (succeeded.length) parts.push(doneFor(succeeded.map(outcome => PROVIDERS[outcome.provider]).join(', ')));
     // Each notice already names its tool.
     for (const outcome of succeeded) if (outcome.result?.notice) parts.push(outcome.result.notice);
     for (const outcome of outcomes) if (outcome.error) parts.push(failed(outcome.provider) + reason(outcome.error));

@@ -3,6 +3,7 @@
 (root => {
   'use strict';
   const { visible, isWait, requestToken } = root.AgentSessionFormat;
+  const { t, phrase, perLocale } = root.AgentSessionI18n;
   const SVG_NS = 'http://www.w3.org/2000/svg';
 
   const providers = [
@@ -12,25 +13,30 @@
   ];
   const PROVIDER_SPECS = Object.fromEntries(providers.map(spec => [spec[0], spec]));
   const shortProviders = { claude: 'Claude', codex: 'Codex', agy: 'AGY' };
-  const labels = {
-    approval: '승인 대기', input: '답변 대기', working: '작업 중', error: '오류',
-    done: '응답 완료', idle: '멈춤', stale: '최근 신호 없음', recent: '최근 대화',
+  // English text, translated where it is shown.
+  const STATUS_LABELS = {
+    approval: phrase('Approval needed'), input: phrase('Answer needed'), working: phrase('Working'), error: phrase('Error'),
+    done: phrase('Replied'), idle: phrase('Paused'), stale: phrase('No recent signal'), recent: phrase('Recent'),
   };
-  const sectionNames = { attention: '확인 필요', working: '작업 중', history: '이전 대화' };
-  const usageLabels = { claude: '구독 사용량', codex: '사용량 보기', agy: '계정 설정' };
+  const SECTION_NAMES = { attention: phrase('Needs attention'), working: phrase('Working'), history: phrase('Earlier') };
+  const USAGE_LABELS = { claude: phrase('Subscription usage'), codex: phrase('View usage'), agy: phrase('Account settings') };
   const defaultOrder = providers.map(([id]) => id);
-  const SOURCE_LABELS = { call: '모델 호출', setting: '도구 설정', response: '실제 응답', request: '턴 요청' };
+  const SOURCE_LABELS = { call: phrase('Model call'), setting: phrase('Tool setting'), response: phrase('Actual response'), request: phrase('Turn request') };
+  const from = table => key => Object.hasOwn(table, key) ? t(table[key]) : '';
+  const statusLabel = from(STATUS_LABELS);
+  const sectionName = from(SECTION_NAMES);
+  const usageLabel = from(USAGE_LABELS);
   const specFor = id => PROVIDER_SPECS[id];
-  const sourceText = source => Object.hasOwn(SOURCE_LABELS, source) ? SOURCE_LABELS[source] : '출처 미확인';
+  const sourceText = source => Object.hasOwn(SOURCE_LABELS, source) ? t(SOURCE_LABELS[source]) : t('Unknown source');
   const navigable = row => row.canOpen !== false || row.viaParent;
 
   // Cached locale formatters + fast local Y/M/D comparison.
-  const hourMinute = new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const monthDay = new Intl.DateTimeFormat('ko-KR', { month: 'numeric', day: 'numeric' });
-  const dateTimeShort = new Intl.DateTimeFormat('ko-KR', {
+  const hourMinute = perLocale(tag => new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
+  const monthDay = perLocale(tag => new Intl.DateTimeFormat(tag, { month: 'numeric', day: 'numeric' }));
+  const dateTimeShort = perLocale(tag => new Intl.DateTimeFormat(tag, {
     year: 'numeric', month: 'numeric', day: 'numeric',
     hour: 'numeric', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
-  });
+  }));
   function isSameLocalDay(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   }
@@ -38,22 +44,22 @@
     if (!value) return '';
     const time = new Date(value);
     const today = new Date(now);
-    return isSameLocalDay(today, time) ? hourMinute.format(time) : monthDay.format(time);
+    return isSameLocalDay(today, time) ? hourMinute().format(time) : monthDay().format(time);
   }
   function resetLabel(at, now = Date.now()) {
     const date = new Date(at);
     const today = new Date(now);
     const day = isSameLocalDay(date, today) ? '' : (date.getMonth() + 1) + '/' + date.getDate() + ' ';
-    return day + hourMinute.format(date);
+    return day + hourMinute().format(date);
   }
   function quotaAlertText(hint, compact = false, now = Date.now()) {
     if (!hint) return '';
-    const reset = hint.resetsAt
-      ? (compact
-        ? (hint.resetIn ? hint.resetIn + ' 초기화' : resetLabel(hint.resetsAt, now) + ' 초기화')
-        : (hint.resetIn ? hint.resetIn + ' (' + resetLabel(hint.resetsAt, now) + ') 초기화' : resetLabel(hint.resetsAt, now) + ' 초기화'))
-      : '';
-    return hint.label + ' 한도 소진' + (reset ? ' · ' + reset : '');
+    const at = hint.resetsAt ? resetLabel(hint.resetsAt, now) : '';
+    const reset = !hint.resetsAt ? ''
+      : !hint.resetIn ? t('Resets at {0}', at)
+        : compact ? t('Resets {0}', hint.resetIn) : t('Resets {0} ({1})', hint.resetIn, at);
+    const used = t('{0} limit used up', hint.label);
+    return reset ? used + ' · ' + reset : used;
   }
 
   function element(tag, className, value) {
@@ -130,20 +136,20 @@
   }
 
   function copyButton(value, label) {
-    const btn = button('copy-btn', label + ' 복사');
+    const btn = button('copy-btn', t('Copy {0}', label));
     btn.dataset.control = 'copy';
     btn.dataset.copy = value;
-    btn.append(icon('copy', 'icon tiny'), element('span', '', '복사'));
+    btn.append(icon('copy', 'icon tiny'), element('span', '', t('Copy')));
     return btn;
   }
   function flashCopied(btn) {
     btn.classList.add('copied');
     const span = btn.querySelector('span');
-    if (span) span.textContent = '복사됨';
+    if (span) span.textContent = t('Copied');
     clearTimeout(btn._copyTimer);
     btn._copyTimer = setTimeout(() => {
       btn.classList.remove('copied');
-      if (span) span.textContent = '복사';
+      if (span) span.textContent = t('Copy');
     }, 1400);
   }
   const inline = value => visible(value).replace(/\n/g, '\\n').replace(/\t/g, '\\t');
@@ -444,7 +450,7 @@
   }
 
   root.AgentSessionPanel = {
-    providers, shortProviders, labels, sectionNames, usageLabels, defaultOrder, specFor, sourceText, navigable,
+    providers, shortProviders, statusLabel, sectionName, usageLabel, defaultOrder, specFor, sourceText, navigable,
     dateTimeShort, when, resetLabel, quotaAlertText,
     element, button, actionButton, icon, copyButton, flashCopied, inline, breakable, brand,
     reconcile,

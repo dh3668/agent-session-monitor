@@ -21,6 +21,7 @@ const { DAY, VENDORS, isUnderDir } = require('./shared.cjs');
 const { createAlerts } = require('./alerts.cjs');
 const { createConnections } = require('./connections.cjs');
 const { createActions } = require('./commands.cjs');
+const { t, tp, phrase, setLocale } = require('../media/i18n.js');
 
 const PREFIX = 'agentSessionMonitor.';
 const VIEW = PREFIX + 'sessions';
@@ -51,10 +52,12 @@ function inlineWindow(seconds) {
 }
 
 async function activate(context) {
+  // Everything shown follows VS Code's display language, which is fixed for the life of this host.
+  setLocale(vscode.env?.language);
   const root = context.globalStorageUri.fsPath;
   const directory = path.join(root, 'sessions');
   await fs.promises.mkdir(directory, { recursive: true, mode: 0o700 });
-  const output = vscode.window.createOutputChannel?.('에이전트 세션 모니터');
+  const output = vscode.window.createOutputChannel?.(t('Agent Session Monitor'));
   const log = (tag, detail) => {
     if (!output) return;
     const stamp = new Date().toISOString().slice(11, 19);
@@ -77,7 +80,7 @@ async function activate(context) {
   const pins = new Set(Array.isArray(saved.pins) ? saved.pins.filter(key => typeof key === 'string') : []);
   let layoutWrite = Promise.resolve();
   const receipts = createReceipts(context.workspaceState, render, () => {
-    if (alive) void settle(vscode.window.showWarningMessage('이 작업 공간의 응답 확인 상태를 저장하지 못했습니다.'));
+    if (alive) void settle(vscode.window.showWarningMessage(t('Could not save which replies were read in this workspace.')));
   });
   let shownProviderOrder = preferences.providerOrder;
   const otherFolders = () => setting('otherFolders', true) !== false;
@@ -134,7 +137,7 @@ async function activate(context) {
     const snapshot = { version: 2, preferences, pins: [...pins] };
     render();
     layoutWrite = layoutWrite.catch(() => {}).then(() => context.workspaceState.update(layoutKey, snapshot)).catch(() => {
-      if (alive) void settle(vscode.window.showWarningMessage('이 작업 공간의 목록 설정을 저장하지 못했습니다.'));
+      if (alive) void settle(vscode.window.showWarningMessage(t('Could not save the list settings for this workspace.')));
     });
     return layoutWrite;
   }
@@ -186,7 +189,7 @@ async function activate(context) {
   });
   const registration = vscode.window.registerWebviewViewProvider(VIEW, panel);
   const status = vscode.window.createStatusBarItem('agentSessionMonitor', vscode.StatusBarAlignment.Left, 42);
-  status.name = '에이전트 세션 모니터';
+  status.name = t('Agent Session Monitor');
   status.command = VIEW + '.focus';
   status.show();
 
@@ -276,7 +279,7 @@ async function activate(context) {
     const enabled = quotaEnabled() && vscode.workspace.isTrusted;
     const quotas = Object.fromEntries(Object.keys(PROVIDERS).map(id => [id, enabled
       ? quotaCache.entries[id] || { status: 'loading', windows: [] }
-      : { status: 'unavailable', windows: [], message: quotaEnabled() ? '신뢰된 작업 폴더에서 확인할 수 있습니다.' : '설정에서 구독 사용량 조회를 켤 수 있습니다.' }]));
+      : { status: 'unavailable', windows: [], message: quotaEnabled() ? phrase('Available in trusted folders.') : phrase('Turn on subscription usage in Settings to see it.') }]));
     const { sessions, completedCount, workingCount } = arrangeSessions(allSessions, { ...preferences, pinnedKeys: [...pins] });
     const latest = new Map(), attention = new Set();
     for (const row of sessions) {
@@ -305,10 +308,16 @@ async function activate(context) {
     const signature = JSON.stringify([state, total]);
     if (signature === previous) return;
     previous = signature;
-    const parts = [['답변', total.input], ['승인', total.approval], ['오류', total.error], ['새 응답', unreadCount], ['진행', total.working],
-      ['다른 폴더', outsideCount]].filter(([, count]) => count).map(([label, count]) => label + ' ' + count);
-    status.text = '$(list-unordered) ' + (parts.join(' · ') || '에이전트 세션 모니터');
-    status.tooltip = scanError || ['에이전트 세션 모니터 열기', ...parts].join(' · ');
+    const parts = [
+      total.input && tp(total.input, '{0} answer', '{0} answers'),
+      total.approval && tp(total.approval, '{0} approval', '{0} approvals'),
+      total.error && tp(total.error, '{0} error', '{0} errors'),
+      unreadCount && tp(unreadCount, '{0} new reply', '{0} new replies'),
+      total.working && t('{0} active', total.working),
+      outsideCount && t('{0} elsewhere', outsideCount),
+    ].filter(Boolean);
+    status.text = '$(list-unordered) ' + (parts.join(' · ') || t('Agent Session Monitor'));
+    status.tooltip = scanError || [t('Open Agent Session Monitor'), ...parts].join(' · ');
     status.accessibilityInformation = { label: status.tooltip };
     // An error stays until it is dismissed, so only an open request colours the item.
     status.backgroundColor = total.input + total.approval ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
@@ -348,7 +357,7 @@ async function activate(context) {
       if (!row.isSubagent) {
         if (!getAlias(row.key) && !metadata.sessions.get(row.key)?.title && !row.title) untitledKeys.push(row.key);
       } else if (ACTIVE.has(row.status) && !getAlias(row.key) &&
-          (!row.title || /^(?:self|default|general-purpose|서브에이전트(?:\s*·.*)?)$/i.test(row.title))) {
+          (!row.title || /^(?:self|default|general-purpose|(?:서브에이전트|Subagent)(?:\s*·.*)?)$/i.test(row.title))) {
         untitledKeys.push(row.key);
         needsChildName = true;
       }
@@ -634,7 +643,7 @@ async function activate(context) {
       } catch (error) {
         log('scan', reason(error));
         if (alive) {
-          scanError = '세션 상태를 읽지 못했습니다. 새로 고침으로 다시 시도하세요.';
+          scanError = t('Could not read session status. Refresh to try again.');
           render();
         }
       }

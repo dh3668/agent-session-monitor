@@ -10,6 +10,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { validModel, validEffort } = require('./hook.cjs');
 const { DAY, UUID_RE, AGY_SURFACES, CODEX_INTERACTIVE_SOURCES, isObject, isUnderDir, providerConfigDir, createLru } = require('./shared.cjs');
+const { t, tp, phrase, intlLocale } = require('../media/i18n.js');
 
 const configDir = (provider, homeDir, env) => providerConfigDir(provider, { homeDir, env, fallbackRelative: true });
 
@@ -35,7 +36,9 @@ function defaultSqlitePath(env = process.env) {
 
 const validId = id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(id);
 const quote = value => "'" + value.replaceAll("'", "''") + "'";
-const format = value => value.toLocaleString('ko-KR');
+const format = value => value.toLocaleString(intlLocale());
+// A count with its own words for one; {0} is the formatted count.
+const counted = (n, one, other) => n === 1 ? t(one) : t(other, format(n));
 const amount = value => Number.isSafeInteger(value) && value >= 0;
 const titleText = value => typeof value === 'string'
   ? value.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 140) : '';
@@ -235,11 +238,12 @@ function add(view, provider, record, quantityLabel) {
   if (current.title || current.usage || current.execution || current.interruptedAt || current.turnInterruptedAt || current.agySource) view.sessions.set(key, current);
 }
 
-function groupUsage(records, suffix) {
+// template: {0} is how many sessions, {1} their formatted total.
+function groupUsage(records, template) {
   const measured = records.filter(r => amount(r.quantity));
   if (!measured.length) return;
   const sum = measured.reduce((acc, r) => acc + r.quantity, 0);
-  if (Number.isSafeInteger(sum)) return measured.length + '개 세션 · ' + format(sum) + suffix;
+  if (Number.isSafeInteger(sum)) return t(template, tp(measured.length, '{0} session', '{0} sessions'), format(sum));
 }
 
 const codexIndexCache = createLru(8);
@@ -290,8 +294,8 @@ async function collectCodex(view, rows, base, executable) {
     break;
   }
   for (const record of records) add(view, 'codex', { ...record, title:codexTitle(record),
-    execution:nativeExecution(record.model,record.effort,'setting') }, n => '누적 ' + format(n) + ' 토큰');
-  const usage = groupUsage(records, ' 토큰 누적');
+    execution:nativeExecution(record.model,record.effort,'setting') }, n => counted(n, phrase('1 token total'), phrase('{0} tokens total')));
+  const usage = groupUsage(records, phrase('{0} · {1} tokens total'));
   if (usage) view.providerUsage.codex = usage;
 
   // Codex also updates this small title-only index for renames. Its most
@@ -361,9 +365,9 @@ async function collectAgy(view, rows, home, executable) {
   }
   const records = [...merged.values()];
   for (const record of records) {
-    add(view, 'agy', record, n => '대화 ' + format(n) + '단계');
+    add(view, 'agy', record, n => counted(n, phrase('1 step in chat'), phrase('{0} steps in chat')));
   }
-  const usage = groupUsage(records, '단계 진행');
+  const usage = groupUsage(records, phrase('{0} · {1} steps run'));
   if (usage) view.providerUsage.agy = usage;
 }
 
@@ -751,7 +755,7 @@ async function readClaudeStats(statsPath) {
   const item = await readJsonSafe(statsPath, 4 * 1024 * 1024);
   const usage = isObject(item) && typeof item.lastComputedDate === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/.test(item.lastComputedDate) && amount(item.totalMessages)
-    ? item.lastComputedDate + ' 기준 · 누적 메시지 ' + format(item.totalMessages) + '개'
+    ? t('As of {0} · {1} messages total', item.lastComputedDate, format(item.totalMessages))
     : undefined;
   claudeStatsCache.set(statsPath, { stamp, usage });
   return usage;
@@ -823,7 +827,7 @@ async function collectClaude(view, rows, base, executable, discoveredPaths, onDi
         'FROM json_each(CAST(readfile(' + quote(index) + ") AS TEXT),'$.entries') WHERE json_extract(value,'$.sessionId') IN (" + idList + ')',
         executable);
       for (const row of found) {
-        add(view, 'claude', { id: row.id, quantity: row.quantity }, n => '메시지 ' + format(n) + '개');
+        add(view, 'claude', { id: row.id, quantity: row.quantity }, n => counted(n, phrase('1 message'), phrase('{0} messages')));
         if (row.customTitle) setRankedTitle(row.id, row.customTitle, 3);
         else if (row.summary) setRankedTitle(row.id, row.summary, 1);
       }

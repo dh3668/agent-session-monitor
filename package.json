@@ -1,7 +1,7 @@
 {
   "name": "agent-session-monitor",
-  "displayName": "에이전트 세션 모니터",
-  "description": "현재 작업 폴더의 Claude Code · Codex · Antigravity 세션을 한 사이드바에서 모니터링하고 승인·질문·작업 흐름·구독 한도를 관리합니다.",
+  "displayName": "%displayName%",
+  "description": "%description%",
   "publisher": "local-tools",
   "version": "1.0.1",
   "icon": "media/icons/app.png",
@@ -34,7 +34,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "제한된 작업 영역에서는 세션 목록만 읽기 전용으로 표시하며 훅 활동 수집, 인라인 승인, 구독 한도 조회는 비활성화됩니다."
+      "description": "%capabilities.untrustedWorkspaces%"
     }
   },
   "activationEvents": [
@@ -51,7 +51,7 @@
   },
   "contributes": {
     "configuration": {
-      "title": "에이전트 세션 모니터",
+      "title": "%configuration.title%",
       "properties": {
         "agentSessionMonitor.notifications": {
           "type": "string",
@@ -63,11 +63,11 @@
             "off"
           ],
           "enumDescriptions": [
-            "승인·답변 대기, 오류 및 응답 완료",
-            "승인·답변 대기 및 오류",
-            "목록과 상태 바만 갱신"
+            "%config.notifications.attentionAndDone%",
+            "%config.notifications.attention%",
+            "%config.notifications.off%"
           ],
-          "description": "세션 알림의 범위를 선택합니다. 사용 중인 창에는 VS Code 알림으로, 창을 벗어나 있을 때는 macOS 알림으로 전달합니다."
+          "description": "%config.notifications.description%"
         },
         "agentSessionMonitor.chatLocation": {
           "type": "string",
@@ -78,34 +78,34 @@
             "lastUsed"
           ],
           "enumDescriptions": [
-            "대화를 보조 사이드바에 표시",
-            "도구에서 마지막으로 사용한 위치 이용"
+            "%config.chatLocation.secondarySidebar%",
+            "%config.chatLocation.lastUsed%"
           ],
-          "description": "세션 제목이나 새 대화 버튼을 눌렀을 때 열 위치입니다."
+          "description": "%config.chatLocation.description%"
         },
         "agentSessionMonitor.subscriptionUsage": {
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "패널을 보는 동안 로그인한 공식 도구의 구독 사용률과 리셋 시각을 조회합니다. 자동 조회 간격은 도구별 5분입니다."
+          "description": "%config.subscriptionUsage.description%"
         },
         "agentSessionMonitor.inlineActions": {
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "에이전트 세션 모니터 패널을 보고 있을 때 VS Code 확장의 메인 Claude Code 세션에서 발생한 승인 요청과 선택형 질문(여러 질문·복수 선택 포함)을 여기에서 처리합니다. Codex·Antigravity·서브에이전트·계획 승인은 읽기 전용 미리보기 후 채팅에서 처리합니다."
+          "description": "%config.inlineActions.description%"
         },
         "agentSessionMonitor.awayNotifications": {
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "VS Code 창이 비활성 상태일 때 승인·답변 대기와 오류, 새 응답을 에이전트 로고와 함께 macOS 네이티브 알림으로 전달합니다. 알림을 누르면 해당 프로젝트의 VS Code 창으로 바로 이동합니다."
+          "description": "%config.awayNotifications.description%"
         },
         "agentSessionMonitor.notificationSound": {
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "macOS 네이티브 알림 표시 시 시스템 알림음을 재생합니다."
+          "description": "%config.notificationSound.description%"
         },
         "agentSessionMonitor.inlineActionSeconds": {
           "type": "number",
@@ -113,19 +113,19 @@
           "default": 45,
           "minimum": 15,
           "maximum": 540,
-          "description": "Claude Code의 승인 요청과 질문을 이 패널에서 바로 선택할 수 있는 시간(초)입니다. 시간이 지나면 공식 채팅에서 처리합니다."
+          "description": "%config.inlineActionSeconds.description%"
         },
         "agentSessionMonitor.otherFolders": {
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "이 창에 열지 않은 다른 작업 폴더에서 승인·답변을 기다리는 세션 수를 목록 아래에 표시합니다."
+          "description": "%config.otherFolders.description%"
         },
         "agentSessionMonitor.activityDetail": {
           "type": "boolean",
           "scope": "application",
           "default": true,
-          "description": "각 세션의 요청, 계획 체크리스트, 실행 단계, 변경 파일 목록, 마지막 응답 요약을 표시합니다. 확장 스냅샷 디스크에는 기록하지 않으며 메모리에만 유지합니다(단, awayNotifications가 켜져 있으면 비활성 창 macOS 알림 본문에 짧은 요약이 포함됩니다)."
+          "description": "%config.activityDetail.description%"
         }
       }
     },
@@ -133,14 +133,14 @@
       "activitybar": [
         {
           "id": "agentSessionMonitor",
-          "title": "에이전트 세션 모니터",
+          "title": "%viewsContainers.sessions%",
           "icon": "media/sessions.svg"
         }
       ],
       "secondarySidebar": [
         {
           "id": "agentSessionMonitorChats",
-          "title": "에이전트 대화",
+          "title": "%viewsContainers.chats%",
           "icon": "media/sessions.svg"
         }
       ]
@@ -149,7 +149,7 @@
       "agentSessionMonitor": [
         {
           "id": "agentSessionMonitor.sessions",
-          "name": "세션 현황",
+          "name": "%views.sessions%",
           "icon": "media/sessions.svg",
           "type": "webview"
         }
@@ -157,7 +157,7 @@
       "agentSessionMonitorChats": [
         {
           "id": "agentSessionMonitor.chatPlaceholder",
-          "name": "대화",
+          "name": "%views.chatPlaceholder%",
           "when": "false"
         }
       ]
@@ -165,91 +165,91 @@
     "commands": [
       {
         "command": "agentSessionMonitor.connect",
-        "title": "에이전트 연결",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.connect%",
+        "category": "%command.category%",
         "icon": "$(plug)"
       },
       {
         "command": "agentSessionMonitor.disconnect",
-        "title": "에이전트 연결 해제",
-        "category": "에이전트 세션 모니터"
+        "title": "%command.disconnect%",
+        "category": "%command.category%"
       },
       {
         "command": "agentSessionMonitor.refresh",
-        "title": "새로 고침",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.refresh%",
+        "category": "%command.category%",
         "icon": "$(refresh)"
       },
       {
         "command": "agentSessionMonitor.open",
-        "title": "대화 열기",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.open%",
+        "category": "%command.category%",
         "icon": "$(go-to-file)"
       },
       {
         "command": "agentSessionMonitor.rename",
-        "title": "표시 이름 변경",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.rename%",
+        "category": "%command.category%",
         "icon": "$(edit)"
       },
       {
         "command": "agentSessionMonitor.dismiss",
-        "title": "세션 숨기기",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.dismiss%",
+        "category": "%command.category%",
         "icon": "$(check)"
       },
       {
         "command": "agentSessionMonitor.switchSession",
-        "title": "현재 폴더의 세션 전환",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.switchSession%",
+        "category": "%command.category%",
         "icon": "$(list-selection)"
       },
       {
         "command": "agentSessionMonitor.nextAttention",
-        "title": "다음 확인할 세션",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.nextAttention%",
+        "category": "%command.category%",
         "icon": "$(arrow-right)"
       },
       {
         "command": "agentSessionMonitor.previousSession",
-        "title": "직전에 연 대화로 돌아가기",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.previousSession%",
+        "category": "%command.category%",
         "icon": "$(history)"
       },
       {
         "command": "agentSessionMonitor.markAllSeen",
-        "title": "새 응답 모두 읽음 표시",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.markAllSeen%",
+        "category": "%command.category%",
         "icon": "$(check-all)"
       },
       {
         "command": "agentSessionMonitor.allowOpenRequest",
-        "title": "열린 요청 허용 또는 답변 보내기",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.allowOpenRequest%",
+        "category": "%command.category%",
         "icon": "$(check)"
       },
       {
         "command": "agentSessionMonitor.denyOpenRequest",
-        "title": "열린 요청 거절",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.denyOpenRequest%",
+        "category": "%command.category%",
         "icon": "$(close)"
       },
       {
         "command": "agentSessionMonitor.newSession",
-        "title": "새 세션 시작",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.newSession%",
+        "category": "%command.category%",
         "icon": "$(add)"
       },
       {
         "command": "agentSessionMonitor.arrange",
-        "title": "정렬 및 필터",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.arrange%",
+        "category": "%command.category%",
         "icon": "$(list-filter)"
       },
       {
         "command": "agentSessionMonitor.testNotification",
-        "title": "알림 테스트",
-        "category": "에이전트 세션 모니터",
+        "title": "%command.testNotification%",
+        "category": "%command.category%",
         "icon": "$(bell)"
       }
     ],

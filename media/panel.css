@@ -547,7 +547,7 @@ body.vscode-high-contrast-light .lens-btn[aria-pressed="true"] {
   font-weight: 500;
 }
 .payload.clipped::after {
-  content: '아래로 더 있습니다 · 끝까지 스크롤해 확인'; position: sticky; bottom: -8px; display: block;
+  content: attr(data-more); position: sticky; bottom: -8px; display: block;
   height: 27px; margin: -19px -10px -8px; padding: 5px 10px; pointer-events: none;
   background: color-mix(in srgb, var(--approval) 28%, var(--bg)); color: var(--ink);
   font: 600 var(--t3)/17px var(--vscode-font-family, system-ui, sans-serif); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-indent: 0;

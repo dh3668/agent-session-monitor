@@ -7,6 +7,7 @@ const { isAbsolute } = path;
 const { setTimeout: delay } = require('node:timers/promises');
 const { query, quote, defaultSqlitePath } = require('./metadata.cjs');
 const { VENDORS, UUID_RE } = require('./shared.cjs');
+const { t, phrase } = require('../media/i18n.js');
 
 const AGY_IDE_SURFACES = Object.freeze(['antigravity', 'antigravity-ide']);
 const AGY_CLI_SOURCE = 'CORTEX_TRAJECTORY_SOURCE_CLI';
@@ -57,9 +58,9 @@ async function agyReachedConversation(id, workspaceStateDb) {
 
 async function offerAgyResume(vscode, id, reason, picker) {
   const cmd = 'agy --resume ' + id;
-  const copy = '재개 명령 복사', choose = '대화 선택기 열기';
+  const copy = t('Copy Resume Command'), choose = t('Open Chat Picker');
   const selection = await vscode.window.showInformationMessage(
-    reason + ' 새 응답 상태를 유지했습니다. 터미널에서 ' + cmd + ' 명령으로 이어갈 수 있습니다.',
+    t('{0} The new-reply state was kept. You can continue in a terminal with {1}.', reason, cmd),
     copy, ...(picker ? [choose] : []));
   if (selection === copy) await vscode.env.clipboard.writeText(cmd);
   if (picker && selection === choose) await vscode.commands.executeCommand(picker);
@@ -97,7 +98,7 @@ const providers = new Map([
     name: 'Claude Code',
     extension: VENDORS.claude,
     picker: 'claudeVSCodeSessionsList.focus',
-    pickerName: '세션 목록',
+    pickerName: phrase('sessions list'),
     async open(vscode, id) {
       if (preferSidebar(vscode)) await vscode.commands.executeCommand('claude-vscode.sidebar.open');
       // Reuse a live editor if this conversation is already there, honour the preferred
@@ -116,7 +117,7 @@ const providers = new Map([
     name: 'Codex',
     extension: VENDORS.codex,
     picker: 'chatgpt.openSidebar',
-    pickerName: '사이드바',
+    pickerName: phrase('sidebar'),
     async open(vscode, id) {
       await moveToRightSidebar(vscode, 'chatgpt.sidebarView');
       return openCodexRoute(vscode, '/local/' + id);
@@ -130,7 +131,7 @@ const providers = new Map([
     name: 'Antigravity',
     extension: VENDORS.agy,
     picker: 'antigravity.searchConversations',
-    pickerName: '대화 선택기',
+    pickerName: phrase('chat picker'),
     async open(vscode, id) {
       await moveToRightSidebar(vscode, 'antigravity.panel');
       return vscode.commands.executeCommand('antigravity.openConversation', id);
@@ -150,22 +151,22 @@ async function openSession(vscode, session, options = {}) {
   const extension = vscode.extensions.getExtension(provider.extension);
   if (!extension) {
     if (session.provider === 'agy' && UUID_RE.test(session.sessionId)) {
-      return offerAgyResume(vscode, session.sessionId, '이 창에서는 Antigravity 확장을 사용할 수 없습니다.');
+      return offerAgyResume(vscode, session.sessionId, t('The {0} extension is not available in this window.', 'Antigravity'));
     }
-    void vscode.window.showWarningMessage(`이 창에서는 ${provider.name} 확장을 사용할 수 없습니다.`);
+    void vscode.window.showWarningMessage(t('The {0} extension is not available in this window.', provider.name));
     return false;
   }
 
   // A missing conversation in the current workspace can open a new, empty Claude chat.
   const folder = typeof session.cwd === 'string' && isAbsolute(session.cwd) ? vscode.Uri.file(session.cwd) : undefined;
   if (!folder || folder.authority) {
-    void vscode.window.showInformationMessage('이 세션을 시작한 프로젝트의 VS Code 창에서 대화를 열어 주세요.');
+    void vscode.window.showInformationMessage(t('Open this chat from the VS Code window of the project that started the session.'));
     return false;
   }
   if (!vscode.workspace.getWorkspaceFolder(folder)) {
-    const action = '작업 폴더 열기';
+    const action = t('Open Workspace Folder');
     const selected = await vscode.window.showInformationMessage(
-      `이 세션은 다른 폴더에서 시작했습니다. 새 VS Code 창에서 열 수 있습니다.\n${session.cwd}`, action,
+      t('This session started in another folder. You can open it in a new VS Code window.') + '\n' + session.cwd, action,
     );
     if (selected === action) {
       try {
@@ -173,7 +174,7 @@ async function openSession(vscode, session, options = {}) {
         if (!(stat.type & vscode.FileType.Directory)) throw new Error('Not a directory');
         await vscode.commands.executeCommand('vscode.openFolder', folder, { forceNewWindow: true });
       } catch {
-        void vscode.window.showWarningMessage('작업 폴더를 열 수 없습니다. 폴더가 아직 해당 경로에 있는지 확인해 주세요.');
+        void vscode.window.showWarningMessage(t('Could not open the folder. Check that it still exists at that path.'));
       }
     }
     return false;
@@ -188,8 +189,8 @@ async function openSession(vscode, session, options = {}) {
         availability = await probe(session.sessionId, { homeDir: options.homeDir, source: options.agySource || session.agySource });
         if (availability !== 'ide' && availability !== 'legacy') {
           const message = availability === 'cli'
-            ? '이 Antigravity 대화는 CLI에서 시작되어 VS Code에서 직접 열 수 없습니다.'
-            : '이 Antigravity 대화의 IDE 기록을 확인할 수 없습니다.';
+            ? t('This Antigravity chat started in the CLI, so VS Code cannot open it directly.')
+            : t('Could not find the IDE history of this Antigravity chat.');
           return await offerAgyResume(vscode, session.sessionId, message, provider.picker);
         }
       }
@@ -200,15 +201,15 @@ async function openSession(vscode, session, options = {}) {
         const arrived = result !== false && (availability === 'ide' || availability === 'legacy') &&
           await agyReachedConversation(session.sessionId, options.workspaceStateDb);
         return arrived || await offerAgyResume(vscode, session.sessionId,
-          'Antigravity에서 요청한 대화로 이동했는지 확인할 수 없습니다.', provider.picker);
+          t('Could not confirm that Antigravity moved to the requested chat.'), provider.picker);
       } catch {
         // A provider update may remove its direct-open command or editor route.
       }
     }
     await vscode.commands.executeCommand(provider.picker);
-    void vscode.window.showInformationMessage(`${provider.name} ${provider.pickerName}에서 해당 대화를 선택해 주세요.`);
+    void vscode.window.showInformationMessage(t('Select the chat in the {0} {1}.', provider.name, t(provider.pickerName)));
   } catch {
-    void vscode.window.showWarningMessage(`${provider.name}을 열 수 없습니다. 확장이 이 창에서 활성화되어 있는지 확인해 주세요.`);
+    void vscode.window.showWarningMessage(t('Could not open {0}. Check that its extension is enabled in this window.', provider.name));
   }
   return false;
 }
@@ -218,7 +219,7 @@ async function startSession(vscode, providerId) {
   if (!provider) return false;
   const extension = vscode.extensions.getExtension(provider.extension);
   if (!extension) {
-    void vscode.window.showWarningMessage(`이 창에서는 ${provider.name} 확장을 사용할 수 없습니다.`);
+    void vscode.window.showWarningMessage(t('The {0} extension is not available in this window.', provider.name));
     return false;
   }
   try {
@@ -226,7 +227,7 @@ async function startSession(vscode, providerId) {
     await provider.start(vscode);
     return true;
   } catch {
-    void vscode.window.showWarningMessage(`${provider.name}에서 새 대화를 열 수 없습니다. 공식 확장의 활성화 상태를 확인해 주세요.`);
+    void vscode.window.showWarningMessage(t('Could not start a new chat in {0}. Check that the official extension is enabled.', provider.name));
     return false;
   }
 }
@@ -247,7 +248,7 @@ async function openUsage(vscode, providerId) {
         if (await vscode.env.openExternal(uri)) return true;
         throw new Error('Browser did not open');
       }
-      void vscode.window.showWarningMessage(`이 창에서는 ${provider.name} 확장을 사용할 수 없습니다.`);
+      void vscode.window.showWarningMessage(t('The {0} extension is not available in this window.', provider.name));
       return false;
     }
     await extension.activate();
@@ -255,8 +256,9 @@ async function openUsage(vscode, providerId) {
     else await vscode.commands.executeCommand('antigravity.openSettings', 'Account');
     return true;
   } catch {
-    const location = providerId === 'agy' ? '계정 설정을' : '사용량 페이지를';
-    void vscode.window.showWarningMessage(`${provider.name} ${location} 열 수 없습니다.`);
+    void vscode.window.showWarningMessage(providerId === 'agy'
+      ? t('Could not open the {0} account settings.', provider.name)
+      : t('Could not open the {0} usage page.', provider.name));
     return false;
   }
 }

@@ -6,6 +6,7 @@ const path = require('node:path');
 const { fileURLToPath } = require('node:url');
 const { query, quote, nativeExecution, codexExecutionColumns, codexTitle, codexTitleSql, claudeChildResponse, mainCheckout, projectSlug, tableColumns, codexDbFiles, latestCodexDb, statStamp, dbStamp, clearMainCheckoutCache } = require('./metadata.cjs');
 const { cleanLabel, toSession } = require('./model.cjs');
+const { t } = require('../media/i18n.js');
 const { DAY, AGY_SURFACES, providerConfigDir, createLru } = require('./shared.cjs');
 
 const configDir = (provider, homeDir, env) => providerConfigDir(provider, { homeDir, env, fallbackRelative: true });
@@ -376,7 +377,7 @@ function merge(rows, indexed, now) {
     result.set(child.parentKey,{provider:child.provider,sessionId:parentId,cwd:known?.[0] || child.cwd,status:'recent',
       ...(known ? {workspacePaths:known} : concreteCwd ? {} : {workspaceInherited:true}),
       updatedAt:child.updatedAt,key:child.parentKey,...(agentId && {isSubagent:true,canOpen:false,
-        title:'서브에이전트 · ' + agentId.slice(-6),parentKey:'claude/' + rootId})});
+        title:t('Subagent · {0}', agentId.slice(-6)),parentKey:'claude/' + rootId})});
   }
   // AGY's child index need not repeat the workspace. Children of children can
   // still open in the correct workspace without inspecting a conversation.

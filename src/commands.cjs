@@ -7,6 +7,7 @@ const { PROVIDERS, STATES, cleanLabel, readSessions } = require('./model.cjs');
 const { arrangeSessions, dismissalFor, dismissableChildren, compareTriage, triageRank } = require('./workspace-sessions.cjs');
 const { VENDORS, isUnderDir } = require('./shared.cjs');
 const { errorLabel, modelName } = require('../media/format.js');
+const { t } = require('../media/i18n.js');
 
 const ACTIVE = new Set(['working', 'approval', 'input']);
 // Control characters and direction overrides (U+202A-U+202E, U+2066-U+2069), built from
@@ -78,7 +79,7 @@ function createActions({
     while (target.isSubagent && target.canOpen === false) {
       visited.add(target.key);
       target = rows.find(r => r.key === target.parentKey && r.provider === row.provider);
-      if (!target || visited.has(target.key)) return vscode.window.showInformationMessage('이 하위 작업의 부모 대화를 현재 폴더에서 찾을 수 없습니다.');
+      if (!target || visited.has(target.key)) return vscode.window.showInformationMessage(t('The parent chat of this subtask is not in the current folder.'));
     }
     const stamp = row.replyAt;
     const errorStamp = row.status === 'error' ? row.updatedAt : undefined;
@@ -123,7 +124,7 @@ function createActions({
       }
       await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(cwd), { forceNewWindow: true });
     } catch {
-      void settle(vscode.window.showWarningMessage('작업 폴더를 열 수 없습니다. 폴더가 아직 해당 경로에 있는지 확인해 주세요.'));
+      void settle(vscode.window.showWarningMessage(t('Could not open the folder. Check that it still exists at that path.')));
     }
   }
 
@@ -143,7 +144,7 @@ function createActions({
       if (!isImage && typeof vscode.window.showTextDocument === 'function') await vscode.window.showTextDocument(uri, { preview: true });
       else await vscode.commands.executeCommand('vscode.open', uri);
     } catch {
-      void settle(vscode.window.showWarningMessage('파일을 열 수 없습니다. 파일이 이동되었거나 작업 폴더 밖에 있을 수 있습니다.'));
+      void settle(vscode.window.showWarningMessage(t('Could not open the file. It may have moved or be outside the workspace folder.')));
     }
   }
 
@@ -157,7 +158,7 @@ function createActions({
   async function nextAttention() {
     await refresh();
     const queue = projectRows().filter(row => triageRank(row) < 4).sort(compareTriage);
-    if (!queue.length) return vscode.window.showInformationMessage('현재 폴더에서 확인할 요청과 새 응답을 모두 보았습니다.');
+    if (!queue.length) return vscode.window.showInformationMessage(t('You have seen every request and new reply in this folder.'));
     const next = queue[(queue.findIndex(row => row.key === queueKey) + 1) % queue.length];
     queueKey = next.key;
     return reviewRow(next);
@@ -250,15 +251,15 @@ function createActions({
     if (action === 'open' || action === 'review') return openRow(row);
     const bridge = getBridge();
     if (action === 'rename') {
-      const alias = await vscode.window.showInputBox({ title: '세션 표시 이름', value: getAlias(key) || getTitle(row),
-        prompt: '비워 두면 에이전트의 세션 제목을 사용합니다.' });
+      const alias = await vscode.window.showInputBox({ title: t('Session display name'), value: getAlias(key) || getTitle(row),
+        prompt: t("Leave it empty to use the agent's session title.") });
       if (alias !== undefined) { await context.globalState.update('alias:' + key, cleanLabel(alias) || undefined); render(); }
     } else if (action === 'dismiss' && !bridge?.forSession(key)) {
       const current = annotateLifecycle(rows, Date.now());
       const markedRow = current.find(r => r.key === key && r.provider === provider);
       if (!markedRow || (ACTIVE.has(markedRow.status) && !markedRow.quiet)) return;
       const dismissal = dismissalFor(current, key);
-      if (!dismissal) return vscode.window.showInformationMessage('이 세션에 진행 중이거나 확인이 필요한 하위 작업이 있습니다.');
+      if (!dismissal) return vscode.window.showInformationMessage(t('This session has subtasks that are still running or need attention.'));
       // The hidden family leaves the list now; what it was doing goes with it, and a later turn starts afresh.
       const hidden = new Set([key]);
       for (let grew = true; grew;) {
@@ -283,7 +284,7 @@ function createActions({
       await refresh();
     } else if (!row.isSubagent && ['approve', 'deny', 'answer', 'defer'].includes(action)) {
       if (!vscode.window.state.focused || !panel.canHandleRequests() || !bridge?.decide(key, token, {action, answers})) {
-        void settle(vscode.window.showInformationMessage('이 요청은 원래 채팅에서 현재 상태를 확인해 주세요.')); return;
+        void settle(vscode.window.showInformationMessage(t('Check the current state of this request in its original chat.'))); return;
       }
       alerts.clearSessionNotifications([key]);
       if (action === 'defer') await openRow(row);
@@ -298,22 +299,22 @@ function createActions({
       const rows = getRows();
       const row = recentOpens.slice(1).map(key => rows.find(r => r.key === key)).find(Boolean);
       if (row) return openRow(row);
-      return vscode.window.showInformationMessage('이 목록에서 대화를 두 개 열면 직전 대화로 돌아갈 수 있습니다.');
+      return vscode.window.showInformationMessage(t('Open two chats from this list, then you can go back to the previous one.'));
     });
     command('switchSession', async () => {
       await refresh();
       const candidates = arrangeSessions(projectRows(), { ...getPreferences(), hideCompleted: false, attentionOnly: false, pinnedKeys: [...pins] }).sessions;
-      if (!candidates.length) return vscode.window.showInformationMessage('현재 작업 폴더에서 열 수 있는 세션이 없습니다.');
+      if (!candidates.length) return vscode.window.showInformationMessage(t('No sessions to open in the current folder.'));
       const choice = await vscode.window.showQuickPick(candidates.map(row => ({
-        label: row.title, description: PROVIDERS[row.provider] + ' · ' + (row.replyUnread ? '새 응답' : row.quiet ? '신호 없음' :
-          row.status === 'error' ? errorLabel(row.errorReason) : STATES[row.status].label),
-        detail: [row.isSubagent && '서브에이전트', modelName(row.execution?.model, row.execution, row.provider), row.execution?.effort, path.basename(row.cwd)].filter(Boolean).join(' · '),
+        label: row.title, description: PROVIDERS[row.provider] + ' · ' + (row.replyUnread ? t('New reply') : row.quiet ? t('No signal') :
+          row.status === 'error' ? errorLabel(row.errorReason) : t(STATES[row.status].label)),
+        detail: [row.isSubagent && t('Subagent'), modelName(row.execution?.model, row.execution, row.provider), row.execution?.effort, path.basename(row.cwd)].filter(Boolean).join(' · '),
         key: row.key, provider: row.provider,
-      })), { title: '현재 폴더의 세션 전환', placeHolder: '제목, 에이전트, 모델, 강도 또는 상태로 검색', matchOnDescription: true, matchOnDetail: true });
+      })), { title: t('Switch Session in Current Folder'), placeHolder: t('Search by title, agent, model, effort, or status'), matchOnDescription: true, matchOnDetail: true });
       if (choice) return act({ action: 'open', key: choice.key, provider: choice.provider });
     });
     command('markAllSeen', async () => {
-      if (!await markAllSeen()) return vscode.window.showInformationMessage('현재 폴더에 읽지 않은 새 응답이 없습니다.');
+      if (!await markAllSeen()) return vscode.window.showInformationMessage(t('No unread replies in the current folder.'));
     });
     // The view presses the button of the request it shows, or refuses; either way nothing is said here.
     command('allowOpenRequest', () => panel.decideOpen('approve'));
@@ -324,21 +325,22 @@ function createActions({
       const installed = id => Boolean(vscode.extensions.getExtension(VENDORS[id]));
       const ids = Object.keys(PROVIDERS);
       const items = [...ids.filter(installed), ...ids.filter(id => !installed(id))]
-        .map(id => ({ id, label: PROVIDERS[id], ...(!installed(id) && { description: '확장 없음' }) }));
-      const choice = await vscode.window.showQuickPick(items, { title: '새 세션 시작' });
+        .map(id => ({ id, label: PROVIDERS[id], ...(!installed(id) && { description: t('Extension not installed') }) }));
+      const choice = await vscode.window.showQuickPick(items, { title: t('Start New Session') });
       if (Object.hasOwn(PROVIDERS, choice?.id ?? '')) return startSession(vscode, choice.id);
     });
     // The panel's own messages change the arrangement, so it is saved and drawn in one place.
     command('arrange', async () => {
       const preferences = getPreferences();
       const mark = (active, label) => (active ? '$(check) ' : '') + label;
-      const sorts = [['priority', '전체 중요순'], ['recent', '도구별 · 최근 활동순'], ['attention', '도구별 · 확인 우선순'], ['manual', '도구별 · 직접 배치']];
+      const sorts = [['priority', t('All · By priority')], ['recent', t('By agent · Most recent')], ['attention', t('By agent · Attention first')],
+        ['manual', t('By agent · Arrange manually')]];
       const choice = await vscode.window.showQuickPick([
         ...sorts.map(([value, label]) => ({ label: mark(preferences.sort === value, label), action: 'setSort', value })),
         { label: '', kind: vscode.QuickPickItemKind?.Separator ?? -1 },
-        { label: mark(preferences.attentionOnly, '확인 필요만 보기'), action: 'setAttentionOnly', field: 'attentionOnly' },
-        { label: mark(preferences.hideCompleted, '완료 숨기기'), action: 'setHideCompleted', field: 'hideCompleted' },
-      ], { title: '정렬 및 필터' });
+        { label: mark(preferences.attentionOnly, t('Only sessions that need attention')), action: 'setAttentionOnly', field: 'attentionOnly' },
+        { label: mark(preferences.hideCompleted, t('Hide finished')), action: 'setHideCompleted', field: 'hideCompleted' },
+      ], { title: t('Sort & Filter') });
       if (!choice?.action) return;
       // A toggle flips what is set when it is chosen, even if the panel changed it meanwhile.
       return act({ action: choice.action, value: choice.field ? !getPreferences()[choice.field] : choice.value });

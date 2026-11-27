@@ -1,12 +1,13 @@
 'use strict';
 const { randomBytes } = require('node:crypto');
 const path = require('node:path');
-const { PROVIDERS, STATES } = require('./model.cjs');
+const { PROVIDERS, STATES, quotaPeriod } = require('./model.cjs');
 const { validModel, validEffort, ERROR_REASONS } = require('./hook.cjs');
 const { resolveWebviewLogos } = require('./logos.cjs');
 const { fileTargetOf, requestFilePaths } = require('../media/format.js');
+const { t, tp, locale } = require('../media/i18n.js');
 
-const PANEL_SCRIPTS = Object.freeze(['format.js', 'panel-core.js', 'panel-cards.js', 'panel-views.js', 'panel.js']);
+const PANEL_SCRIPTS = Object.freeze(['i18n.js', 'format.js', 'panel-core.js', 'panel-cards.js', 'panel-views.js', 'panel.js']);
 const LENS_MODES = new Set(['all', 'attention', 'working']);
 const UNSET = Symbol('unset');
 const text = value => typeof value === 'string' ? value : '';
@@ -81,9 +82,11 @@ function quotaView(entry) {
     return { status: 'unavailable', windows: [] };
   const windows = [];
   for (const window of Array.isArray(entry.windows) ? entry.windows : []) {
-    if (!window || !text(window.label).trim() || !['used', 'remaining'].includes(window.kind) ||
+    const period = quotaPeriod(window?.period);
+    if (!window || (!text(window.name).trim() && period === undefined) || !['used', 'remaining'].includes(window.kind) ||
         !Number.isFinite(window.percent) || window.percent < 0 || window.percent > 100) continue;
-    windows.push({ label: window.label, kind: window.kind, percent: window.percent, resetsAt: timestamp(window.resetsAt) });
+    windows.push({ name: text(window.name), ...(period !== undefined && { period }), kind: window.kind, percent: window.percent,
+      resetsAt: timestamp(window.resetsAt) });
   }
   const status = !windows.length && (entry.status === 'ready' || entry.status === 'stale') ? 'unavailable' : entry.status;
   return { status, windows: status === 'unavailable' ? [] : windows, updatedAt: timestamp(entry.updatedAt),
@@ -407,10 +410,10 @@ function createPanel(vscode, extensionUri, onAction, onVisibilityChange = () => 
     }).join('');
     const scripts = PANEL_SCRIPTS.map(name => `<script nonce="${nonce}" src="${resource(name)}"></script>`).join('');
     lastLogoSig = sig;
-    web.html = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+    web.html = `<!doctype html><html lang="${locale()}"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${source}; style-src ${source}; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none';">
-<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="${resource('panel.css')}"><title>에이전트 세션 모니터</title></head>
-<body><template id="logos">${images}</template><main id="sessions" aria-label="에이전트별 세션"></main>${scripts}</body></html>`;
+<meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="${resource('panel.css')}"><title>${escapeAttribute(t('Agent Session Monitor'))}</title></head>
+<body><template id="logos">${images}</template><main id="sessions" aria-label="${escapeAttribute(t('Sessions by agent'))}"></main>${scripts}</body></html>`;
   }
   function cleanup() {
     const hadView = Boolean(active);
@@ -564,7 +567,7 @@ function createPanel(vscode, extensionUri, onAction, onVisibilityChange = () => 
       }
       if (value !== lastBadgeValue) {
         lastBadgeValue = value;
-        active.badge = value ? { value, tooltip: '확인할 세션 ' + value + '개' } : undefined;
+        active.badge = value ? { value, tooltip: tp(value, '{0} session to check', '{0} sessions to check') } : undefined;
       }
     },
     dispose: cleanup,

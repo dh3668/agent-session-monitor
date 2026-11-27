@@ -6,6 +6,7 @@ const { PROVIDERS, STATES, cleanLabel } = require('./model.cjs');
 const { compareTriage } = require('./workspace-sessions.cjs');
 const { resolveNotificationLogo } = require('./logos.cjs');
 const { errorLabel, requestSummary, subtitleFor, depletedQuotaHint } = require('../media/format.js');
+const { t } = require('../media/i18n.js');
 
 const WAITING = new Set(['approval', 'input']);
 
@@ -28,8 +29,8 @@ const notificationKey = ids => 'asm-' + createHash('sha256').update(ids.join('\n
 const folderName = cwd => cleanLabel(path.basename(cwd)) || cwd;
 const statusTextFor = (row, { forSystem = false } = {}) => {
   if (row.status === 'error') return errorLabel(row.errorReason);
-  if (forSystem && row.status === 'done') return '새 응답';
-  return STATES[row.status].label;
+  if (forSystem && row.status === 'done') return t('New reply');
+  return t(STATES[row.status].label);
 };
 
 function createAlerts({
@@ -113,8 +114,8 @@ function createAlerts({
   function toast(claimed, remote, revision) {
     const label = row => statusTextFor(row);
     if (remote) {
-      const message = claimed.slice(0, 3).map(row => '다른 폴더 · ' + folderName(row.cwd) + ' · ' + label(row)).join('\n');
-      void settle(Promise.resolve(vscode.window.showInformationMessage(message, '폴더 열기')).then(action => {
+      const message = claimed.slice(0, 3).map(row => t('Other folder · {0} · {1}', folderName(row.cwd), label(row))).join('\n');
+      void settle(Promise.resolve(vscode.window.showInformationMessage(message, t('Open folder'))).then(action => {
         if (action && isAlive()) return onOpenFolder(claimed[0].cwd);
       }));
       return;
@@ -124,7 +125,7 @@ function createAlerts({
     if (!visible.length) return;
     const target = visible[0];
     const message = visible.slice(0, 3).map(row => getTitle(row) + ' · ' + label(row)).join('\n');
-    void settle(Promise.resolve(vscode.window.showInformationMessage(message, '세션 보기')).then(action => {
+    void settle(Promise.resolve(vscode.window.showInformationMessage(message, t('Show session'))).then(action => {
       if (!action || !isAlive() || revision !== getWorkspaceRevision()) return;
       const raw = getRows().find(r => r.key === target.key);
       if (raw) return onReviewRow(projectRow(raw));
@@ -135,12 +136,12 @@ function createAlerts({
     const primary = claimed[0];
     const sameProvider = claimed.every(row => row.provider === primary.provider);
     const providerId = sameProvider ? primary.provider : undefined;
-    const providerLabel = providerId ? PROVIDERS[providerId] : '에이전트 세션 모니터';
+    const providerLabel = providerId ? PROVIDERS[providerId] : t('Agent Session Monitor');
     const primaryStatus = statusTextFor(primary, { forSystem: true });
     const title = claimed.length === 1
       ? providerLabel + ' · ' + primaryStatus
-      : (sameProvider ? providerLabel : '에이전트 세션 모니터') + ' · ' + primaryStatus + ' 외 ' + (claimed.length - 1) + '건';
-    const subtitle = remote ? folderName(primary.cwd) + ' · 다른 폴더' : (workspaceLabel() || folderName(primary.cwd));
+      : (sameProvider ? providerLabel : t('Agent Session Monitor')) + ' · ' + primaryStatus + ' ' + t('+{0} more', claimed.length - 1);
+    const subtitle = remote ? folderName(primary.cwd) + ' · ' + t('Other folder') : (workspaceLabel() || folderName(primary.cwd));
 
     let body;
     if (claimed.length === 1) {
@@ -154,12 +155,12 @@ function createAlerts({
       }
       if (!detail && primary.status === 'error' && primary.errorReason === 'rate_limit') {
         const hint = depletedQuotaHint(quotaCache.entries[primary.provider]);
-        if (hint) detail = hint.label + ' 한도 소진' + (hint.resetIn ? ' · ' + hint.resetIn + ' 초기화' : '');
+        if (hint) detail = t('{0} limit used up', hint.label) + (hint.resetIn ? ' · ' + t('Resets {0}', hint.resetIn) : '');
       }
       body = detail ? name + '\n' + detail : name + ' · ' + primaryStatus;
     } else {
       const lines = claimed.slice(0, 3).map(row => (remote ? folderName(row.cwd) : getTitle(row)) + ' · ' + statusTextFor(row, { forSystem: true }));
-      if (claimed.length > 3) lines.push('외 ' + (claimed.length - 3) + '건');
+      if (claimed.length > 3) lines.push(t('+{0} more', claimed.length - 3));
       body = lines.join('\n');
     }
 
@@ -207,8 +208,8 @@ function createAlerts({
     if (permissionPrompted || !isAlive()) return;
     permissionPrompted = true;
     void settle(Promise.resolve(vscode.window.showWarningMessage(
-      'macOS 알림 권한이 꺼져 있어 에이전트 알림을 표시할 수 없습니다. 시스템 설정 > 알림 > 에이전트 세션 모니터에서 허용해 주세요.',
-      '알림 설정 열기',
+      t('macOS notifications are turned off for this extension, so agent alerts cannot be shown. Allow them in System Settings > Notifications > Agent Session Monitor.'),
+      t('Open Notification Settings'),
     )).then(action => {
       if (action && vscode.env?.openExternal && vscode.Uri?.parse) {
         return vscode.env.openExternal(vscode.Uri.parse(notificationsSettingsUrl));
@@ -319,9 +320,9 @@ function createAlerts({
     const payload = {
       id: 'asm-test-' + Date.now(),
       group: workspaceGroupId(),
-      title: '에이전트 세션 모니터 · 알림 테스트',
+      title: t('Agent Session Monitor · Test notification'),
       subtitle: workspaceLabel() || 'VS Code',
-      body: '알림을 누르면 이 프로젝트의 VS Code 창으로 바로 이동합니다.',
+      body: t('Click the notification to jump straight to the VS Code window for this project.'),
       ...(logoPath && { logoPath }),
       ...(openUri && { openUri }),
       ...(workspaceRoot && { workspaceRoot }),
@@ -332,15 +333,15 @@ function createAlerts({
     const result = await notifier.deliver(payload);
     if (result.ok) {
       hasTestNotification = true;
-      void settle(vscode.window.showInformationMessage('macOS 알림을 전송했습니다. 알림을 눌러 이 창으로 돌아오는지 확인해 보세요.'));
+      void settle(vscode.window.showInformationMessage(t('Sent a macOS notification. Click it to check that it brings you back to this window.')));
     } else if (result.permission === 'denied') {
       permissionPrompted = false;
       guideNotificationPermission();
     } else if (result.permission === 'unsupported') {
-      void settle(vscode.window.showInformationMessage('시스템 알림은 macOS에서 지원합니다.'));
+      void settle(vscode.window.showInformationMessage(t('System notifications are supported on macOS.')));
     } else {
       log('notify', `test failed: ${result.error || 'unknown'}`);
-      void settle(vscode.window.showWarningMessage('macOS 알림을 전송하지 못했습니다. 출력 채널(에이전트 세션 모니터)에서 원인을 확인해 주세요.'));
+      void settle(vscode.window.showWarningMessage(t('Could not send the macOS notification. See the Agent Session Monitor output channel for the cause.')));
     }
   }
 

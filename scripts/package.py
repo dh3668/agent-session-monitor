@@ -11,16 +11,28 @@ import xml.etree.ElementTree as ET
 root = Path(__file__).resolve().parents[1]
 pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
 output = root / f"{pkg['name']}-{pkg['version']}.vsix"
+# Manifest text lives in package.nls.json (English) and package.nls.<locale>.json.
+nls = json.loads((root / "package.nls.json").read_text(encoding="utf-8"))
+nls_files = sorted(path.name for path in root.glob("package.nls*.json"))
+
+
+def localized(value):
+    match = re.fullmatch(r"%([^%]+)%", value or "")
+    if not match:
+        return value
+    if match.group(1) not in nls:
+        sys.exit(f"ERROR: package.nls.json has no entry for {value}")
+    return nls[match.group(1)]
 
 manifest = ET.Element("PackageManifest", {
     "Version": "2.0.0", "xmlns": "http://schemas.microsoft.com/developer/vsx-schema/2011"
 })
 metadata = ET.SubElement(manifest, "Metadata")
 ET.SubElement(metadata, "Identity", {
-    "Language": "ko-KR", "Id": pkg["name"], "Version": pkg["version"], "Publisher": pkg["publisher"],
+    "Language": "en-US", "Id": pkg["name"], "Version": pkg["version"], "Publisher": pkg["publisher"],
 })
-ET.SubElement(metadata, "DisplayName").text = pkg["displayName"]
-ET.SubElement(metadata, "Description").text = pkg["description"]
+ET.SubElement(metadata, "DisplayName").text = localized(pkg["displayName"])
+ET.SubElement(metadata, "Description").text = localized(pkg["description"])
 ET.SubElement(metadata, "Categories").text = ",".join(pkg.get("categories", ["Other"]))
 if (root / "media/icons/app.png").is_file():
     ET.SubElement(metadata, "Icon").text = "extension/media/icons/app.png"
@@ -49,6 +61,7 @@ for suffix, mime in {
     "gif": "image/gif",
     "icns": "image/icns",
     "plist": "application/xml",
+    "strings": "text/plain",
     "vsixmanifest": "text/xml",
 }.items():
     ET.SubElement(types, "Default", {"Extension": suffix, "ContentType": mime})
@@ -56,13 +69,14 @@ for suffix, mime in {
 # Automatically discover all runtime CJS modules and assets.
 files = [
     "package.json",
+    *nls_files,
     "README.md",
     "media/sessions.svg",
     "media/panel.css",
 ]
 for media_js in sorted((root / "media").glob("*.js")):
     files.append(media_js.relative_to(root).as_posix())
-for optional in ["LICENSE"]:
+for optional in ["LICENSE", "README.ko.md"]:
     if (root / optional).is_file():
         files.append(optional)
 for src_file in sorted((root / "src").glob("*.cjs")):
@@ -79,12 +93,12 @@ if notifier_app.is_dir():
         if app_file.is_file():
             files.append(app_file.relative_to(root).as_posix())
 
-# Verify every local require() inside src/*.cjs is included in the VSIX.
+# Verify every local require() inside the runtime scripts is included in the VSIX.
 included = set(files)
 require_re = re.compile(r"""require\(\s*['"](\.\.?/[^'"]+)['"]\s*\)""")
 missing = []
 for rel in list(included):
-    if not rel.endswith(".cjs"):
+    if not rel.endswith((".cjs", ".js")):
         continue
     src_path = root / rel
     text = src_path.read_text(encoding="utf-8")

@@ -1,8 +1,9 @@
 'use strict';
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { PROVIDERS, cleanLabel } = require('./model.cjs');
+const { PROVIDERS, cleanLabel, quotaPeriod } = require('./model.cjs');
 const { writeAtomic } = require('./shared.cjs');
+const { phrase } = require('../media/i18n.js');
 
 const AUTO_INTERVAL = 5 * 60000;
 const MANUAL_INTERVAL = 15000;
@@ -11,10 +12,13 @@ const MAX_AGE = 24 * 60 * 60000;
 function normalize(value, now) {
   const windows = [];
   for (const item of Array.isArray(value?.windows) ? value.windows.slice(0, 80) : []) {
-    const label = cleanLabel(item?.label);
-    if (!label || !Number.isFinite(item.percent) || item.percent < 0 || item.percent > 100 ||
+    // A record written before windows were language-neutral keeps its whole label as the period.
+    const legacy = item && item.name === undefined && item.period === undefined;
+    const name = legacy ? '' : cleanLabel(item?.name);
+    const period = quotaPeriod(legacy ? item?.label : item?.period);
+    if ((!name && period === undefined) || !Number.isFinite(item.percent) || item.percent < 0 || item.percent > 100 ||
         !['used', 'remaining'].includes(item.kind)) continue;
-    const window = { label, percent: item.percent, kind: item.kind };
+    const window = { name, ...(period !== undefined && { period }), percent: item.percent, kind: item.kind };
     if (Number.isSafeInteger(item.resetsAt) && item.resetsAt > 0) window.resetsAt = item.resetsAt;
     windows.push(window);
   }
@@ -75,7 +79,7 @@ function createQuotaCache(directory, readQuota, { now = Date.now, onChange = () 
       const success = normalize(result, now());
       if (success) record = { attempt:record.attempt, success };
       else {
-        record.error = cleanLabel(result?.message) || '구독 사용량을 가져오지 못했습니다.';
+        record.error = cleanLabel(result?.message) || phrase('Could not get subscription usage.');
         if (result?.signedOut || /로그인.*필요|로그인해|인증.*필요/.test(record.error)) delete record.success;
       }
       await save(file, record);
@@ -86,7 +90,7 @@ function createQuotaCache(directory, readQuota, { now = Date.now, onChange = () 
     if (!Object.hasOwn(PROVIDERS, id)) return Promise.resolve();
     if (!inflight.has(id)) {
       inflight.set(id, refresh(id, manual).catch(() => {
-        publish(id,{status:'unavailable', windows:[], message:'구독 사용량 캐시를 읽을 수 없습니다.'});
+        publish(id,{status:'unavailable', windows:[], message:phrase('Could not read the subscription usage cache.')});
       }).finally(() => inflight.delete(id)));
     }
     return inflight.get(id);

@@ -4,17 +4,19 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { localWorkspacePaths, validModel, validEffort, sameApprovalWindow, ERROR_REASONS } = require('./hook.cjs');
 const { DAY, isObject, stripControlBidi } = require('./shared.cjs');
+const { t, phrase } = require('../media/i18n.js');
 
 const PROVIDERS = Object.freeze({ claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' });
+// Labels are English text, translated where they are shown.
 const STATES = Object.freeze({
-  approval: { label: '승인 대기', icon: 'shield', group: 'attention' },
-  input: { label: '답변 대기', icon: 'question', group: 'attention' },
-  error: { label: '오류', icon: 'error', group: 'attention' },
-  working: { label: '작업 중', icon: 'sync', group: 'working' },
-  done: { label: '응답 완료', icon: 'pass', group: 'finished' },
-  idle: { label: '멈춤', icon: 'circle-outline', group: 'recent' },
-  recent: { label: '최근 대화', icon: 'history', group: 'recent' },
-  stale: { label: '최근 신호 없음', icon: 'history', group: 'recent' },
+  approval: { label: phrase('Approval needed'), icon: 'shield', group: 'attention' },
+  input: { label: phrase('Answer needed'), icon: 'question', group: 'attention' },
+  error: { label: phrase('Error'), icon: 'error', group: 'attention' },
+  working: { label: phrase('Working'), icon: 'sync', group: 'working' },
+  done: { label: phrase('Replied'), icon: 'pass', group: 'finished' },
+  idle: { label: phrase('Paused'), icon: 'circle-outline', group: 'recent' },
+  recent: { label: phrase('Recent'), icon: 'history', group: 'recent' },
+  stale: { label: phrase('No recent signal'), icon: 'history', group: 'recent' },
 });
 const SUBAGENT_STALE_MS = 2 * 3600000;
 const SNAPSHOT_FILE_RE = /^[a-f0-9]{64}\.json$/;
@@ -23,6 +25,12 @@ const UNCOMPUTED = Symbol('uncomputed');
 
 function cleanLabel(value) {
   return stripControlBidi(value, { max: 100 });
+}
+
+// A quota window's period: whole minutes, a known period, or the provider's own word for it.
+function quotaPeriod(value) {
+  if (Number.isSafeInteger(value) && value > 0 && value <= 527040) return value;
+  return cleanLabel(value) || undefined;
 }
 
 function isUnstartedSnapshot(data) {
@@ -133,7 +141,7 @@ function toSession(data, now = Date.now()) {
     ...(errorReason && {errorReason}),
     ...(Object.keys(execution).length && {execution}),
     key, ...(workspacePaths && {workspacePaths}), ...(parentKey && { isSubagent: true, parentKey, canOpen: data.provider !== 'claude',
-      title: agentTitle || '서브에이전트 · ' + data.sessionId.slice(-6) }),
+      title: agentTitle || t('Subagent · {0}', data.sessionId.slice(-6)) }),
   };
 }
 
@@ -270,7 +278,7 @@ function sessionLabel(row, alias) {
   if (cleaned) return cleaned;
   const project = cleanLabel(path.basename(row.cwd));
   // Newer UUIDv7 thread IDs share a time prefix; use the trailing digits.
-  return [project || '이름 없는 세션', row.sessionId.slice(-6)].join(' · ');
+  return [project || t('Untitled session'), row.sessionId.slice(-6)].join(' · ');
 }
 
 function resolveSessionWaits(row, { resolvedRefs, resolvedSoftRefs, runningSoftRefs, haltedOnReject = false, resolvedAt = 0 } = {}, now = Date.now()) {
@@ -381,6 +389,7 @@ module.exports = {
   STATES,
   SUBAGENT_STALE_MS,
   cleanLabel,
+  quotaPeriod,
   readSessions,
   createSessionReader,
   pruneExpiredSessions,

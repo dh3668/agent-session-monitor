@@ -2,31 +2,32 @@
 // same file runs in the webview and under the test runner.
 (root => {
   'use strict';
-  const oneDecimal = new Intl.NumberFormat('ko-KR', {maximumFractionDigits: 1});
+  const { t, phrase, locale, perLocale } = typeof module === 'object' && module.exports ? require('./i18n.js') : root.AgentSessionI18n;
+  const oneDecimal = perLocale(tag => new Intl.NumberFormat(tag, {maximumFractionDigits: 1}));
   // Whole minutes only: a row that just changed needs no number next to it.
   function sinceText(kind, from, now = Date.now()) {
     const minutes = Math.floor((now - Number(from)) / 60000);
     if (!(minutes >= 1)) return '';
-    const amount = minutes < 60 ? minutes + '분' : minutes < 1440 ? Math.floor(minutes / 60) + '시간' : Math.floor(minutes / 1440) + '일';
-    return kind === 'ago' ? amount + ' 전' : amount;
+    const amount = minutes < 60 ? t('{0}m', minutes) : minutes < 1440 ? t('{0}h', Math.floor(minutes / 60)) : t('{0}d', Math.floor(minutes / 1440));
+    return kind === 'ago' ? t('{0} ago', amount) : amount;
   }
   function remainingText(expiresAt, now = Date.now()) {
     const seconds = Math.max(0, Math.ceil((Number(expiresAt) - now) / 1000));
-    return (seconds >= 60 ? Math.floor(seconds / 60) + '분 ' : '') + (seconds % 60) + '초 남음';
+    return seconds >= 60 ? t('{0}m {1}s left', Math.floor(seconds / 60), seconds % 60) : t('{0}s left', seconds);
   }
   // Concise relative countdown until a subscription quota window resets.
   function resetInText(resetsAt, now = Date.now()) {
     const ms = Number(resetsAt) - now;
     if (!(ms > 0) || !Number.isFinite(ms)) return '';
-    if (ms < 60000) return '곧 초기화';
+    if (ms < 60000) return t('soon');
     const minutes = Math.ceil(ms / 60000);
-    if (minutes < 60) return minutes + '분 후';
+    if (minutes < 60) return t('in {0}m', minutes);
     const hours = Math.floor(minutes / 60);
     const rem = minutes % 60;
-    if (hours < 24) return rem ? hours + '시간 ' + rem + '분 후' : hours + '시간 후';
+    if (hours < 24) return rem ? t('in {0}h {1}m', hours, rem) : t('in {0}h', hours);
     const days = Math.floor(hours / 24);
     const remHours = hours % 24;
-    return remHours ? days + '일 ' + remHours + '시간 후' : days + '일 후';
+    return remHours ? t('in {0}d {1}h', days, remHours) : t('in {0}d', days);
   }
   function diffStats(before, after) {
     const ops = lineChanges(before ? before.split('\n') : [], after ? after.split('\n') : []);
@@ -40,15 +41,15 @@
   function percentLabel(value) {
     if (value > 0 && value < .1) return '<0.1';
     if (value < 100 && value > 99.9) return '>99.9';
-    return oneDecimal.format(value);
+    return oneDecimal().format(value);
   }
   function byteSizeText(bytes) {
     const n = Number(bytes);
     if (!Number.isFinite(n) || n < 0) return '0B';
     if (n < 1024) return Math.round(n) + 'B';
     const kb = n / 1024;
-    if (kb < 1024) return (kb >= 10 ? Math.round(kb) : oneDecimal.format(kb)) + 'KB';
-    return oneDecimal.format(kb / 1024) + 'MB';
+    if (kb < 1024) return (kb >= 10 ? Math.round(kb) : oneDecimal().format(kb)) + 'KB';
+    return oneDecimal().format(kb / 1024) + 'MB';
   }
   const leftOf = window => window.kind === 'remaining' ? window.percent : 100 - window.percent;
   // Text from a request is shown exactly as it will be used. Whatever a reader
@@ -156,37 +157,58 @@
     if (!name) return model;
     return name[0].toUpperCase() + name.slice(1).toLowerCase() + ' ' + major + (minor ? '.' + minor : '') + (wide ? ' (1M)' : '');
   }
-  const DURATION_KNOWN = { '세션': 300, '일간': 1440, '주간': 10080, '월간': 43200, '시간당': 60, '기본 구간': 1, '추가 구간': 10080 };
-  const DURATION_UNITS = { '분': 1, '시간': 60, '일': 1440 };
-  const DURATION_RE = /^(\d+)\s*(분|시간|일)$/;
-  function durationMinutes(label) {
-    if (Object.hasOwn(DURATION_KNOWN, label)) return DURATION_KNOWN[label];
-    const match = DURATION_RE.exec(label);
-    return match ? Number(match[1]) * DURATION_UNITS[match[2]] : Infinity;
+  // A quota window is named by what it limits (nothing for the whole account) and by
+  // its period: a number of minutes, a known period, or the provider's own word for it.
+  // Neither is stored in a display language, so a cached window reads right in any.
+  const PERIOD_MINUTES = { session: 300, hourly: 60, daily: 1440, weekly: 10080, monthly: 43200, primary: 1, secondary: 10080 };
+  const PERIOD_LABELS = {
+    session: phrase('Session'), hourly: phrase('Hourly'), daily: phrase('Daily'), weekly: phrase('Weekly'), monthly: phrase('Monthly'),
+    primary: phrase('Primary window'), secondary: phrase('Secondary window'),
+  };
+  const QUOTA_NAMES = { 'OAuth apps': phrase('OAuth apps') };
+  const isMinutes = period => Number.isSafeInteger(period) && period > 0;
+  function periodMinutes(period) {
+    if (isMinutes(period)) return period;
+    return typeof period === 'string' && Object.hasOwn(PERIOD_MINUTES, period) ? PERIOD_MINUTES[period] : Infinity;
   }
-  const windowDuration = w => durationMinutes(w.label.split('·').at(-1).trim());
+  function periodLabel(period) {
+    if (isMinutes(period)) {
+      if (period === 10080) return t('Weekly');
+      if (period % 1440 === 0) return t('{0}d', period / 1440);
+      if (period % 60 === 0) return t('{0}h', period / 60);
+      return t('{0}m', period);
+    }
+    if (typeof period !== 'string') return '';
+    return Object.hasOwn(PERIOD_LABELS, period) ? t(PERIOD_LABELS[period]) : period;
+  }
+  const quotaName = name => typeof name !== 'string' ? '' : Object.hasOwn(QUOTA_NAMES, name) ? t(QUOTA_NAMES[name]) : name;
+  const quotaLabel = w => [quotaName(w?.name), periodLabel(w?.period)].filter(Boolean).join(' · ');
+  // The same window keeps one identity whatever language it is shown in.
+  const quotaKey = w => (w?.name || '') + '|' + (w?.period ?? '');
+  const windowDuration = w => periodMinutes(w.period);
   function representativeWindow(id, windows) {
     if (!windows.length) return;
     // Account-wide windows come first. Antigravity reports only model groups.
-    const general = windows.filter(w => Number.isFinite(durationMinutes(w.label)));
-    const gemini = id === 'agy' ? windows.filter(w => /^Gemini\b[^·]*·/i.test(w.label)) : [];
+    const general = windows.filter(w => !w.name && Number.isFinite(windowDuration(w)));
+    const gemini = id === 'agy' ? windows.filter(w => /^Gemini\b/i.test(w.name || '') && periodLabel(w.period)) : [];
     const candidates = general.length ? general : gemini.length ? gemini : windows;
     // The limit that runs out first is the one to watch; a tie goes to the shorter window.
     return candidates.reduce((best, w) => leftOf(w) < leftOf(best) ||
       leftOf(w) === leftOf(best) && windowDuration(w) < windowDuration(best) ? w : best);
   }
-  const LIMIT_PERIOD_TAIL_RE = /[\s·]*(?:\d+\s*(?:분|시간|일)|세션|일간|주간|월간|시간당|기본 구간|추가 구간)$/;
-  function shortLimitLabel(label) {
-    return String(label)
-      .replace(/^Gemini Models(?:\s*·\s*|\b)/i, match => match.includes('·') ? 'Gemini ' : 'Gemini')
-      .replace(/^Claude and GPT models(?:\s*·\s*|\b)/i, match => match.includes('·') ? 'Claude/GPT ' : 'Claude/GPT');
+  function shortName(name) {
+    const full = quotaName(name);
+    if (/^Gemini Models$/i.test(full)) return 'Gemini';
+    if (/^Claude and GPT models$/i.test(full)) return 'Claude/GPT';
+    return full;
   }
-  // What a limit other than the account's own is named by, without its period: "Opus 주간" is "Opus".
+  function shortLimitLabel(w) {
+    const short = shortName(w?.name);
+    return [short, periodLabel(w?.period)].filter(Boolean).join(short !== quotaName(w?.name) ? ' ' : ' · ');
+  }
+  // What a limit other than the account's own is named by, without its period: "Opus · Weekly" is "Opus".
   // A limit that is nothing but a period keeps it.
-  function limitName(label) {
-    const short = shortLimitLabel(label);
-    return short.replace(LIMIT_PERIOD_TAIL_RE, '').trim() || short;
-  }
+  const limitName = w => shortName(w?.name) || periodLabel(w?.period);
   const isWait = row => Boolean(row && (row.status === 'input' || row.status === 'approval') && !row.quiet);
   // Requests with something to show: answerable here (action) or readable only (preview).
   function digest(text) {
@@ -216,36 +238,37 @@
   // Tool names as the three agents report them, grouped by what a step does.
   // An unknown name is shown as it is rather than guessed at.
   const toolKinds = [
-    ['command', '명령 실행', /^(bash|shell|shell_command|exec_command|run_command|run_terminal_cmd|local_shell|unified_exec|write_stdin|command_status|send_command_input|read_terminal|manage_task)$/i],
-    ['patch', '파일 수정', /^(edit|multiedit|apply_patch|str_replace_editor|replace_file_content|multi_replace_file_content|notebookedit|edit_file)$/i],
-    ['write', '파일 작성', /^(write|write_file|write_to_file|create_file)$/i],
-    ['read', '파일 읽기', /^(read|read_file|view_file|view_image|view_file_outline|view_code_item|view|open_file|notebookread|read_mcp_resource|readmcpresourcetool)$/i],
-    ['search', '검색', /^(grep|grep_files|glob|ls|list_dir|find_by_name|grep_search|codebase_search|search_files|toolsearch|tool_search|list_mcp_resources|list_mcp_resource_templates|lsp|listmcpresourcestool)$/i],
-    ['web', '웹 조회', /^(webfetch|websearch|web_search|search_query|read_url_content|search_web)$/i],
-    ['agent', '하위 작업', /^(task|agent|spawn_agent|invoke_subagent|define_subagent|manage_subagents|run_workflow|swarm|browser_subagent|workflow|wait_agent|wait|send_input|send_message|sendmessage|teamcreate|teamdelete|followup_task|close_agent|resume_agent|interrupt_agent|list_agents|taskoutput|taskstop)$/i],
-    ['plan', '계획 정리', /^(todowrite|update_plan|update_steps|taskcreate|taskupdate|tasklist|taskget|exitplanmode|enterplanmode|task_boundary|croncreate|crondelete|cronlist|schedule)$/i],
-    ['focus', '진행', /^update_focus$/i],
-    ['skill', '스킬 실행', /^skill$/i],
-    ['permission', '권한 요청', /^(ask_permission|request_permissions)$/i],
-    ['question', '질문', /^(askuserquestion|request_user_input|ask_question|notify_user)$/i],
+    ['command', phrase('Run command'), /^(bash|shell|shell_command|exec_command|run_command|run_terminal_cmd|local_shell|unified_exec|write_stdin|command_status|send_command_input|read_terminal|manage_task)$/i],
+    ['patch', phrase('Edit file'), /^(edit|multiedit|apply_patch|str_replace_editor|replace_file_content|multi_replace_file_content|notebookedit|edit_file)$/i],
+    ['write', phrase('Write file'), /^(write|write_file|write_to_file|create_file)$/i],
+    ['read', phrase('Read file'), /^(read|read_file|view_file|view_image|view_file_outline|view_code_item|view|open_file|notebookread|read_mcp_resource|readmcpresourcetool)$/i],
+    ['search', phrase('Search'), /^(grep|grep_files|glob|ls|list_dir|find_by_name|grep_search|codebase_search|search_files|toolsearch|tool_search|list_mcp_resources|list_mcp_resource_templates|lsp|listmcpresourcestool)$/i],
+    ['web', phrase('Web lookup'), /^(webfetch|websearch|web_search|search_query|read_url_content|search_web)$/i],
+    ['agent', phrase('Subtask'), /^(task|agent|spawn_agent|invoke_subagent|define_subagent|manage_subagents|run_workflow|swarm|browser_subagent|workflow|wait_agent|wait|send_input|send_message|sendmessage|teamcreate|teamdelete|followup_task|close_agent|resume_agent|interrupt_agent|list_agents|taskoutput|taskstop)$/i],
+    ['plan', phrase('Update plan'), /^(todowrite|update_plan|update_steps|taskcreate|taskupdate|tasklist|taskget|exitplanmode|enterplanmode|task_boundary|croncreate|crondelete|cronlist|schedule)$/i],
+    ['focus', phrase('Progress'), /^update_focus$/i],
+    ['skill', phrase('Run skill'), /^skill$/i],
+    ['permission', phrase('Permission request'), /^(ask_permission|request_permissions)$/i],
+    ['question', phrase('Question'), /^(askuserquestion|request_user_input|ask_question|notify_user)$/i],
   ];
   const TOOL_KIND_CACHE = new Map();
   const TOOL_KIND_EMPTY = Object.freeze({ kind: 'other', label: '' });
   const MCP_TOOL_RE = /^mcp__(.+?)__(.+)$/;
   function toolKind(tool) {
     if (typeof tool !== 'string' || !tool) return TOOL_KIND_EMPTY;
-    const cached = TOOL_KIND_CACHE.get(tool);
+    const cacheKey = locale() + '\0' + tool;
+    const cached = TOOL_KIND_CACHE.get(cacheKey);
     if (cached) return cached;
     let result;
     for (const [kind, label, pattern] of toolKinds) {
-      if (pattern.test(tool)) { result = Object.freeze({ kind, label }); break; }
+      if (pattern.test(tool)) { result = Object.freeze({ kind, label: t(label) }); break; }
     }
     if (!result) {
       const mcp = MCP_TOOL_RE.exec(tool);
       result = Object.freeze({ kind: 'other', label: mcp ? mcp[1] + ' · ' + mcp[2] : tool });
     }
     if (TOOL_KIND_CACHE.size >= 256) TOOL_KIND_CACHE.delete(TOOL_KIND_CACHE.keys().next().value);
-    TOOL_KIND_CACHE.set(tool, result);
+    TOOL_KIND_CACHE.set(cacheKey, result);
     return result;
   }
   const oneLine = value => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
@@ -432,7 +455,7 @@
     const patchKey = patchKeyOf(input);
     if (patchKey) {
       const files = patchFilesOf(input[patchKey]);
-      if (files.length > 1) return pathTail(files[0]) + ' 외 ' + (files.length - 1) + '개';
+      if (files.length > 1) return t('{0} and {1} more', pathTail(files[0]), files.length - 1);
       if (files.length === 1) return pathTail(files[0]);
     }
     const cmdWordsKey = ['command', 'cmd'].find(key =>
@@ -453,13 +476,13 @@
   }
   const asText = value => typeof value === 'string' ? value : JSON.stringify(value) ?? String(value);
   const PERMISSION_LABELS = {
-    file_system: '파일 시스템', filesystem: '파일 시스템',
-    network: '네트워크', env: '환경 변수', macos: 'macOS',
-    read: '읽기', write: '쓰기', enabled: '허용', hosts: '호스트', domains: '도메인',
+    file_system: phrase('File system'), filesystem: phrase('File system'),
+    network: phrase('Network'), env: phrase('Environment variables'), macos: 'macOS',
+    read: phrase('Read'), write: phrase('Write'), enabled: phrase('Allowed'), hosts: phrase('Hosts'), domains: phrase('Domains'),
   };
   function formatPermissionFields(obj, prefix = '') {
     const out = [];
-    const labelOf = key => Object.hasOwn(PERMISSION_LABELS, key) ? PERMISSION_LABELS[key] : key;
+    const labelOf = key => Object.hasOwn(PERMISSION_LABELS, key) ? t(PERMISSION_LABELS[key]) : key;
     for (const [key, value] of Object.entries(obj)) {
       const name = prefix ? prefix + ' · ' + labelOf(key) : labelOf(key);
       if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -467,9 +490,9 @@
         if (nested.length) out.push(...nested);
         else out.push({ kind: 'field', name, value: '{}' });
       } else if (Array.isArray(value)) {
-        out.push({ kind: 'field', name, value: value.length ? value.map(asText).join(', ') : '(없음)' });
+        out.push({ kind: 'field', name, value: value.length ? value.map(asText).join(', ') : t('(none)') });
       } else if (typeof value === 'boolean') {
-        out.push({ kind: 'field', name, value: value ? '예' : '아니오' });
+        out.push({ kind: 'field', name, value: value ? t('Yes') : t('No') });
       } else {
         out.push({ kind: 'field', name, value: asText(value) });
       }
@@ -482,9 +505,9 @@
   function requestBlocks(detail, cwd) {
     const blocks = [];
     const input = parseInput(detail);
-    const place = () => { if (cwd) blocks.push({ kind: 'field', name: '실행 위치', value: cwd }); };
+    const place = () => { if (cwd) blocks.push({ kind: 'field', name: t('Working directory'), value: cwd }); };
     if (!input) {
-      if (detail) blocks.push({ kind: 'code', text: detail, label: '요청 내용 전체' });
+      if (detail) blocks.push({ kind: 'code', text: detail, label: t('Full request') });
       place();
       return blocks;
     }
@@ -534,23 +557,23 @@
         }
       } else {
         for (const file of patchFilesOf(input[patchKey])) blocks.push({ kind: 'path', text: file });
-        blocks.push({ kind: 'code', text: input[patchKey], label: '패치 내용' });
+        blocks.push({ kind: 'code', text: input[patchKey], label: t('Patch') });
       }
     } else if (cmdWordsKey || cmdKey) {
       shown.add(cmdWordsKey || cmdKey);
       promoteNote(CMD_NOTE_KEYS);
-      blocks.push({ kind: 'code', text: cmdWordsKey ? shellJoin(input[cmdWordsKey]) : input[cmdKey], label: '실행할 명령' });
+      blocks.push({ kind: 'code', text: cmdWordsKey ? shellJoin(input[cmdWordsKey]) : input[cmdKey], label: t('Command to run') });
     } else if (isText('plan')) {
       shown.add('plan');
       if (isText('planFilePath')) {
         shown.add('planFilePath');
         blocks.push({ kind: 'path', text: input.planFilePath });
       }
-      blocks.push({ kind: 'code', text: input.plan, label: '실행 계획' });
+      blocks.push({ kind: 'code', text: input.plan, label: t('Plan') });
     } else if (fileKey && isText('new_source')) {
       shown.add(fileKey);
       shown.add('new_source');
-      blocks.push({ kind: 'path', text: input[fileKey] }, { kind: 'code', text: input.new_source, label: '새 셀 내용' });
+      blocks.push({ kind: 'path', text: input[fileKey] }, { kind: 'code', text: input.new_source, label: t('New cell content') });
     } else if (fileKey && edited.length && edited.every(isText)) {
       promoteNote(EDIT_NOTE_KEYS);
       for (const key of [fileKey, ...edited]) shown.add(key);
@@ -597,7 +620,7 @@
         shown.add('permissions');
         const permFields = formatPermissionFields(input.permissions);
         if (permFields.length) blocks.push(...permFields);
-        else blocks.push({ kind: 'field', name: '권한', value: '{}' });
+        else blocks.push({ kind: 'field', name: t('Permissions'), value: '{}' });
       }
     }
     if (!shown.has('planFilePath') && isText('planFilePath') && input.planFilePath.trim()) {
@@ -612,7 +635,7 @@
         const extra = Object.entries(item).filter(([k]) => k !== 'tool' && k !== 'prompt');
         const summary = [item.tool.trim(), item.prompt.trim()].filter(Boolean).join(' · ') +
           (extra.length ? ' (' + extra.map(([k, v]) => k + ': ' + asText(v)).join(', ') + ')' : '');
-        blocks.push({ kind: 'field', name: '허용 요청', value: summary });
+        blocks.push({ kind: 'field', name: t('Allowed prompt'), value: summary });
       }
     }
     for (const [key, value] of Object.entries(input)) {
@@ -639,16 +662,26 @@
     return current?.text ? oneLine(current.text) : '';
   }
   const ERROR_LABELS = {
-    rate_limit: '한도 도달',
-    billing_error: '결제 확인',
-    authentication_failed: '인증 필요',
-    max_output_tokens: '출력 한도',
-    server_error: '서버 오류',
-    invalid_request: '요청 오류',
-    max_steps_exceeded: '단계 한도',
+    rate_limit: phrase('Limit reached'),
+    billing_error: phrase('Check billing'),
+    authentication_failed: phrase('Sign-in required'),
+    max_output_tokens: phrase('Output limit'),
+    server_error: phrase('Server error'),
+    invalid_request: phrase('Request error'),
+    max_steps_exceeded: phrase('Step limit'),
   };
+  // Each is a whole phrase: how a reason joins the verb differs between languages.
+  const STOPPED_LABELS = {
+    billing_error: phrase('Stopped: check billing'),
+    authentication_failed: phrase('Stopped: sign-in required'),
+    max_output_tokens: phrase('Stopped: output limit'),
+    server_error: phrase('Stopped: server error'),
+    invalid_request: phrase('Stopped: request error'),
+    max_steps_exceeded: phrase('Stopped: step limit'),
+  };
+  const known = (table, reason) => typeof reason === 'string' && Object.hasOwn(table, reason);
   function errorLabel(reason) {
-    return typeof reason === 'string' && Object.hasOwn(ERROR_LABELS, reason) ? ERROR_LABELS[reason] : '오류';
+    return known(ERROR_LABELS, reason) ? t(ERROR_LABELS[reason]) : t('Error');
   }
   function depletedQuotaHint(quota, now = Date.now()) {
     if (!quota || (quota.status !== 'ready' && quota.status !== 'stale') || !Array.isArray(quota.windows) || !quota.windows.length) return;
@@ -656,39 +689,43 @@
     if (!depleted.length) return;
     const best = depleted.reduce((a, b) =>
       leftOf(b) < leftOf(a) || (leftOf(b) === leftOf(a) && windowDuration(b) < windowDuration(a)) ? b : a);
-    return { label: best.label, resetsAt: best.resetsAt, resetIn: best.resetsAt ? resetInText(best.resetsAt, now) : '' };
+    return { label: quotaLabel(best), resetsAt: best.resetsAt, resetIn: best.resetsAt ? resetInText(best.resetsAt, now) : '' };
   }
   function workPhase(row) {
     if (!row) return { kind: 'idle', label: '' };
     if (row.quiet && (row.status === 'working' || row.status === 'input' || row.status === 'approval')) {
       if (row.status === 'input' || row.status === 'approval') {
-        return { kind: 'quiet', label: '신호 없음 · 거절·중단되었을 수 있음' };
+        return { kind: 'quiet', label: t('No signal · May have been declined or stopped') };
       }
-      return { kind: 'quiet', label: row.isSubagent ? '신호 없음 · 종료 추정' : '신호 없음 · 중단되었을 수 있음' };
+      return { kind: 'quiet', label: row.isSubagent ? t('No signal · Probably finished') : t('No signal · May have stopped') };
     }
-    if (row.status === 'input') return { kind: 'input', label: '답변 대기 중' };
-    if (row.status === 'approval') return { kind: 'approval', label: '승인 대기 중' };
+    if (row.status === 'input') return { kind: 'input', label: t('Waiting for your answer') };
+    if (row.status === 'approval') return { kind: 'approval', label: t('Waiting for approval') };
     if (row.status === 'error') {
-      const suffix = row.errorAcked ? ' (확인됨)' : '';
-      if (row.errorReason === 'rate_limit') return { kind: row.errorAcked ? 'idle' : 'error', label: '사용 한도 도달' + suffix };
-      if (row.errorReason) return { kind: row.errorAcked ? 'idle' : 'error', label: errorLabel(row.errorReason) + (row.errorAcked ? suffix : '로 중단됨') };
-      return { kind: row.errorAcked ? 'idle' : 'error', label: row.errorAcked ? '이전 오류 (확인됨)' : '오류로 중단됨' };
+      const kind = row.errorAcked ? 'idle' : 'error';
+      const acked = text => row.errorAcked ? t('{0} (acknowledged)', text) : text;
+      if (row.errorReason === 'rate_limit') return { kind, label: acked(t('Usage limit reached')) };
+      if (row.errorReason) {
+        return { kind, label: row.errorAcked || !known(STOPPED_LABELS, row.errorReason)
+          ? acked(errorLabel(row.errorReason)) : t(STOPPED_LABELS[row.errorReason]) };
+      }
+      return { kind, label: row.errorAcked ? t('Earlier error (acknowledged)') : t('Stopped by an error') };
     }
-    if (row.replyUnread && row.status === 'done') return { kind: 'done', label: '새 응답 도착' };
-    if (row.status === 'done') return { kind: 'done', label: '작업 완료' };
+    if (row.replyUnread && row.status === 'done') return { kind: 'done', label: t('New reply received') };
+    if (row.status === 'done') return { kind: 'done', label: t('Finished') };
     if (row.status === 'working') {
       const kind = row.activity ? toolKind(row.activity.tool).kind : '';
-      if (row.activity?.failed) return { kind: 'error', label: '직전 단계 실패 · 복구 중' };
-      if (kind === 'patch' || kind === 'write') return { kind: 'edit', label: '코드 수정 중' };
-      if (kind === 'command') return { kind: 'run', label: '명령 실행 · 검증 중' };
-      if (kind === 'read' || kind === 'search' || kind === 'web') return { kind: 'explore', label: '코드 분석 중' };
-      if (kind === 'plan') return { kind: 'plan', label: '작업 계획 정리 중' };
-      if (kind === 'agent') return { kind: 'agent', label: '하위 작업 조율 중' };
-      if (kind === 'skill') return { kind: 'working', label: '스킬 실행 중' };
-      return { kind: 'working', label: '작업 진행 중' };
+      if (row.activity?.failed) return { kind: 'error', label: t('Last step failed · Recovering') };
+      if (kind === 'patch' || kind === 'write') return { kind: 'edit', label: t('Editing code') };
+      if (kind === 'command') return { kind: 'run', label: t('Running commands · Verifying') };
+      if (kind === 'read' || kind === 'search' || kind === 'web') return { kind: 'explore', label: t('Reading code') };
+      if (kind === 'plan') return { kind: 'plan', label: t('Planning the work') };
+      if (kind === 'agent') return { kind: 'agent', label: t('Coordinating subtasks') };
+      if (kind === 'skill') return { kind: 'working', label: t('Running a skill') };
+      return { kind: 'working', label: t('Work in progress') };
     }
-    if (row.status === 'idle' && row.interrupted) return { kind: 'idle', label: '중단됨' };
-    return { kind: 'idle', label: '이전 대화' };
+    if (row.status === 'idle' && row.interrupted) return { kind: 'idle', label: t('Interrupted') };
+    return { kind: 'idle', label: t('Inactive') };
   }
   const FILE_KINDS = new Set(['patch', 'write', 'read']);
   const NON_FILE_READ_RE = /^(?:read_mcp_resource|readmcpresourcetool)$/i;
@@ -698,15 +735,15 @@
     return FILE_KINDS.has(toolKind(step.tool).kind) ? step.target : '';
   }
   const PROVIDER_NAMES = { claude: 'Claude Code', codex: 'Codex', agy: 'Antigravity' };
-  const STATUS_NAMES = { approval: '승인 대기', input: '답변 대기', working: '작업 중', error: '오류',
-    done: '응답 완료', idle: '멈춤', stale: '신호 없음', recent: '최근 대화' };
+  const STATUS_NAMES = { approval: phrase('Approval needed'), input: phrase('Answer needed'), working: phrase('Working'), error: phrase('Error'),
+    done: phrase('Replied'), idle: phrase('Paused'), stale: phrase('No signal'), recent: phrase('Recent') };
   function searchHaystack(row) {
     return [
       row.title, row.prompt, row.reply, row.focus, row.project, PROVIDER_NAMES[row.provider],
-      row.replyUnread && row.status === 'done' ? '새 응답' : STATUS_NAMES[row.status],
-      row.status === 'idle' && row.interrupted && '중단됨',
+      row.replyUnread && row.status === 'done' ? t('New reply') : known(STATUS_NAMES, row.status) && t(STATUS_NAMES[row.status]),
+      row.status === 'idle' && row.interrupted && t('Interrupted'),
       row.status === 'error' && errorLabel(row.errorReason),
-      row.quiet && '신호 없음',
+      row.quiet && t('No signal'),
       modelName(row.execution?.model, row.execution, row.provider),
       row.execution?.model, row.execution?.effort,
       requestSummary(row),
@@ -732,7 +769,7 @@
       const target = row.activity ? oneLine(row.activity.target) : '';
       if (kind === 'plan' && (!target || /^#\d+$/.test(target))) {
         const current = activePlanStep(row);
-        if (current) return '계획 · ' + current;
+        if (current) return t('Plan · {0}', current);
         if (oneLine(row.focus)) return oneLine(row.focus);
       }
       if (kind === 'focus') {
@@ -745,7 +782,7 @@
     return '';
   }
   const api = { sinceText, remainingText, resetInText, diffStats, percentLabel, byteSizeText, leftOf, visible, visibleCommand, shellJoin, foldBlankRuns, lineChanges,
-    modelName, representativeWindow, shortLimitLabel, limitName, isWait, requestToken, dismissKey, requestOrder, toolKind, stepText, parseInput, previewQuestions,
+    modelName, quotaLabel, quotaKey, representativeWindow, shortLimitLabel, limitName, isWait, requestToken, dismissKey, requestOrder, toolKind, stepText, parseInput, previewQuestions,
     parseApplyPatch, requestFilePaths, inputTarget, requestBlocks, requestSummary, activePlanStep, errorLabel, depletedQuotaHint, workPhase, fileTargetOf,
     searchHaystack, matchesFilter, subtitleFor };
   if (typeof module === 'object' && module.exports) module.exports = api;

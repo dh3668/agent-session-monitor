@@ -6,10 +6,13 @@ const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const { stripControlBidi, nvmBinDirs } = require('./shared.cjs');
+const { phrase } = require('../media/i18n.js');
 
 const execute = promisify(execFile);
 const maxBytes = 2 * 1024 * 1024;
 const timeout = 12000;
+const WEEK = 10080;
+// Messages are English text; the panel shows them in the display language.
 const unavailable = message => ({status: 'unavailable', windows: [], message});
 
 function timestamp(value) {
@@ -23,10 +26,12 @@ function timestamp(value) {
   }
 }
 
-function addWindow(windows, label, percent, reset, kind = 'used') {
+// A window is named by what it limits ('' for the whole account) and its period: minutes,
+// a known period, or the provider's own word. Neither is in a display language.
+function addWindow(windows, name, period, percent, reset, kind = 'used') {
   if (!Number.isFinite(percent) || percent < 0 || percent > 100) return;
   const resetsAt = timestamp(reset);
-  windows.push({label, percent, kind, ...(resetsAt ? {resetsAt} : {})});
+  windows.push({name, ...(period ? {period} : {}), percent, kind, ...(resetsAt ? {resetsAt} : {})});
 }
 
 function shortLabel(value) {
@@ -34,7 +39,7 @@ function shortLabel(value) {
 }
 
 function snapshot(windows, plan, now) {
-  if (!windows.length) return unavailable('구독 한도를 확인할 수 없습니다. 도구의 로그인 상태를 확인해 주세요.');
+  if (!windows.length) return unavailable(phrase('Could not read subscription limits. Check that you are signed in to the tool.'));
   const rawPlan = shortLabel(plan);
   const plans = {max: 'Max', max5x: 'Max 5x', max20x: 'Max 20x', pro: 'Pro', prolite: 'Pro Lite', plus: 'Plus',
     team: 'Team', enterprise: 'Enterprise', business: 'Business', free: 'Free', edu: 'Edu', go: 'Go',
@@ -48,59 +53,52 @@ function claudeQuota(data, now) {
   const windows = [];
   const limits = data?.rate_limits;
   if (limits && data.rate_limits_available !== false) {
-    const labels = {five_hour: '5시간', seven_day: '주간', seven_day_sonnet: 'Sonnet 주간',
-      seven_day_opus: 'Opus 주간', seven_day_oauth_apps: 'OAuth 앱 주간'};
-    for (const [key, label] of Object.entries(labels)) {
-      addWindow(windows, label, limits[key]?.utilization, limits[key]?.resets_at);
+    const named = {five_hour: ['', 300], seven_day: ['', WEEK], seven_day_sonnet: ['Sonnet', WEEK],
+      seven_day_opus: ['Opus', WEEK], seven_day_oauth_apps: ['OAuth apps', WEEK]};
+    for (const [key, [name, period]] of Object.entries(named)) {
+      addWindow(windows, name, period, limits[key]?.utilization, limits[key]?.resets_at);
     }
     for (const model of Array.isArray(limits.model_scoped) ? limits.model_scoped : []) {
-      const label = shortLabel(model?.display_name);
-      if (label && !windows.some(window => window.label === label + ' 주간')) {
-        addWindow(windows, label + ' 주간', model.utilization, model.resets_at);
+      const name = shortLabel(model?.display_name);
+      if (name && !windows.some(window => window.name === name && window.period === WEEK)) {
+        addWindow(windows, name, WEEK, model.utilization, model.resets_at);
       }
     }
     if (!windows.length && Array.isArray(limits.limits)) {
       for (const row of limits.limits) {
         const scope = shortLabel(row?.scope?.model?.display_name) || shortLabel(row?.scope?.surface?.display_name);
-        const period = row?.kind === 'session' ? '세션' : row?.group === 'weekly' ? '주간' : shortLabel(row?.group);
-        if (period) addWindow(windows, scope ? scope + ' ' + period : period, row.percent, row.resets_at);
+        const period = row?.kind === 'session' ? 'session' : row?.group === 'weekly' ? WEEK : shortLabel(row?.group);
+        if (period) addWindow(windows, scope, period, row.percent, row.resets_at);
       }
     }
   }
   return snapshot(windows, data?.subscription_type, now);
 }
 
-function windowLabel(minutes, fallback) {
-  if (!Number.isSafeInteger(minutes) || minutes <= 0) return fallback;
-  if (minutes === 10080) return '주간';
-  if (minutes % 1440 === 0) return minutes / 1440 + '일';
-  if (minutes % 60 === 0) return minutes / 60 + '시간';
-  return minutes + '분';
-}
+const windowPeriod = (minutes, fallback) => Number.isSafeInteger(minutes) && minutes > 0 ? minutes : fallback;
 
 function codexQuota(data, now) {
   const windows = [];
   const byId = data?.rateLimitsByLimitId;
   const base = byId?.codex || data?.rateLimits;
-  function add(snapshot, prefix) {
-    for (const [key, fallback] of [['primary', '기본 구간'], ['secondary', '추가 구간']]) {
+  function add(snapshot, name) {
+    for (const key of ['primary', 'secondary']) {
       const entry = snapshot?.[key];
-      if (entry) addWindow(windows, prefix + windowLabel(entry.windowDurationMins, fallback),
-        entry.usedPercent, entry.resetsAt);
+      if (entry) addWindow(windows, name, windowPeriod(entry.windowDurationMins, key), entry.usedPercent, entry.resetsAt);
     }
   }
   add(base, '');
   for (const [id, entry] of Object.entries(byId || {})) {
     if (id === 'codex' || entry === base || id === base?.limitId) continue;
     const name = shortLabel(entry?.limitName) || shortLabel(id);
-    if (name) add(entry, name + ' · ');
+    if (name) add(entry, name);
   }
   return snapshot(windows, base?.planType || data?.rateLimits?.planType, now);
 }
 
 function agyPeriod(bucket) {
-  const periods = {weekly: '주간', daily: '일간', monthly: '월간', hourly: '시간당',
-    fivehour: '5시간', fivehours: '5시간', '5hour': '5시간', '5hours': '5시간', '5h': '5시간'};
+  const periods = {weekly: 'weekly', daily: 'daily', monthly: 'monthly', hourly: 'hourly',
+    fivehour: 300, fivehours: 300, '5hour': 300, '5hours': 300, '5h': 300};
   for (const value of [bucket.window, bucket.name]) {
     const key = shortLabel(value).toLowerCase().replace(/[-_ ]/g, '').replace(/limitremaining$/, '');
     if (Object.hasOwn(periods, key)) return periods[key];
@@ -117,8 +115,7 @@ function agyQuota(data, now) {
         if (!Number.isFinite(bucket?.remaining_fraction)) continue;
         const groupName = shortLabel(group.name);
         const period = agyPeriod(bucket);
-        const label = [groupName, period].filter(Boolean).join(' · ');
-        if (label) addWindow(windows, label, bucket.remaining_fraction * 100, bucket.reset_time, 'remaining');
+        if (groupName || period) addWindow(windows, groupName, period, bucket.remaining_fraction * 100, bucket.reset_time, 'remaining');
       }
     }
   }
@@ -275,7 +272,7 @@ function createQuotaReader(options = {}) {
   const now = options.now || Date.now;
   const binaryCache = new Map();
   return async function readQuota(provider) {
-    if (!['claude', 'codex', 'agy'].includes(provider)) return unavailable('지원하지 않는 도구입니다.');
+    if (!['claude', 'codex', 'agy'].includes(provider)) return unavailable(phrase('This tool is not supported.'));
     const env = {...(options.env || process.env)};
     // A quota helper is a separate non-interactive client, never a nested chat.
     delete env.CLAUDECODE;
@@ -301,13 +298,13 @@ function createQuotaReader(options = {}) {
       const commandOptions = {...processOptions, maxBuffer: maxBytes, killSignal: 'SIGKILL'};
       const version = await execute(file, ['--version'], commandOptions);
       // Older versions may interpret a slash command in print mode as a model prompt.
-      if (!supportsAgyUsage(version.stdout)) return unavailable('Antigravity CLI 1.1.11 이상이 필요합니다.');
+      if (!supportsAgyUsage(version.stdout)) return unavailable(phrase('Antigravity CLI 1.1.11 or later is required.'));
       const result = await execute(file, ['-p', '/usage', '--output-format', 'json'], commandOptions);
       return agyQuota(JSON.parse(result.stdout), now);
     } catch (error) {
       binaryCache.delete(cacheKey);
-      return unavailable(error?.code === 'ENOENT' ? '사용량을 조회할 로컬 CLI를 찾을 수 없습니다.'
-        : '구독 사용량을 가져오지 못했습니다. 로그인 상태와 연결을 확인해 주세요.');
+      return unavailable(error?.code === 'ENOENT' ? phrase('Could not find the local CLI to check usage.')
+        : phrase('Could not get subscription usage. Check your sign-in and connection.'));
     }
   };
 }

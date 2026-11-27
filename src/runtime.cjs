@@ -6,6 +6,7 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { nvmBinDirs, writeAtomic } = require('./shared.cjs');
+const { t } = require('../media/i18n.js');
 const execute = promisify(execFile);
 
 async function nodeCandidates({ homeDir = os.homedir(), env = process.env, systemPaths = ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/usr/bin/node'] } = {}) {
@@ -34,7 +35,7 @@ async function nodeExecutable(options = {}) {
       if (/^v(\d+)\./.test(stdout) && Number(stdout.match(/^v(\d+)/)[1]) >= 18) return file;
     } catch { /* Try the next local installation. */ }
   }
-  throw new Error('상태 훅을 실행할 Node.js 18 이상을 찾지 못했습니다.');
+  throw new Error(t('Could not find Node.js 18 or later to run the status hooks.'));
 }
 
 async function prepareRuntime(storage, extensionRoot) {

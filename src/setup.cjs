@@ -9,6 +9,7 @@ const { isDeepStrictEqual } = require('node:util');
 const { setTimeout: sleep } = require('node:timers/promises');
 const { EVENT_NAMES } = require('./hook.cjs');
 const { isObject, providerConfigDir, nvmBinDirs } = require('./shared.cjs');
+const { t } = require('../media/i18n.js');
 
 const AGY_GROUP = 'local-vscode-agent-session-monitor';
 const VERIFY_TTL_MS = 5 * 60000;
@@ -30,7 +31,7 @@ const MATCHER = {
 
 const statusCache = new Map();
 const statStamp = stat => stat ? `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}:${stat.ino}:${stat.mode}` : 'missing';
-const incompatible = () => new Error('기존 훅 설정 형식을 확인해 주세요. 파일을 변경하지 않았습니다.');
+const incompatible = () => new Error(t('Check the format of the existing hook settings. The file was not changed.'));
 // The inline request window can be lengthened up to 540 s; the hook needs headroom beyond it.
 const timeoutFor = (provider, event) => provider === 'claude' && event === 'PermissionRequest' ? 600 : 3;
 const directEvent = (provider, event) => provider === 'agy' && !['PreToolUse', 'PostToolUse'].includes(event);
@@ -42,14 +43,14 @@ function invalidateStatusCache(configPath) {
 }
 
 function getConfigPath(provider, {homeDir = os.homedir(), env = process.env} = {}) {
-  if (!Object.hasOwn(CONFIG_FILES, provider)) throw new Error('지원하지 않는 도구입니다.');
+  if (!Object.hasOwn(CONFIG_FILES, provider)) throw new Error(t('This tool is not supported.'));
   const directory = providerConfigDir(provider, { homeDir, env });
-  if (!path.isAbsolute(directory)) throw new Error('홈 설정 디렉터리에는 절대 경로가 필요합니다.');
+  if (!path.isAbsolute(directory)) throw new Error(t('The home settings directory must be an absolute path.'));
   return path.join(directory, CONFIG_FILES[provider]);
 }
 
 function shellQuote(word) {
-  if (typeof word !== 'string' || /[\u0000-\u001f\u007f]/u.test(word)) throw new Error('훅 경로가 유효하지 않습니다.');
+  if (typeof word !== 'string' || /[\u0000-\u001f\u007f]/u.test(word)) throw new Error(t('The hook path is not valid.'));
   return "'" + word.replaceAll("'", "'\\''") + "'";
 }
 
@@ -127,7 +128,7 @@ function parseSettings(input) {
       return value;
     });
   } catch {
-    throw new Error('설정 파일에 표준 JSON으로 보존하기 어려운 값, 주석 또는 구문 오류가 있습니다. 파일을 변경하지 않았습니다.');
+    throw new Error(t('The settings file has comments, syntax errors, or values that standard JSON cannot keep. The file was not changed.'));
   }
   // JSON.parse discards duplicate keys. Refuse the rewrite rather than dropping them.
   let count = 0;
@@ -146,7 +147,7 @@ function parseSettings(input) {
 async function snapshot(file) {
   try {
     const stat = await fs.lstat(file);
-    if (!stat.isFile() || stat.nlink !== 1) throw new Error('설정 파일이 일반 파일인지 확인해 주세요. 링크는 변경하지 않았습니다.');
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error(t('Check that the settings file is a regular file. Links are not changed.'));
     return { stat, text: await fs.readFile(file, 'utf8') };
   } catch (error) {
     if (error.code === 'ENOENT') return null;
@@ -186,16 +187,16 @@ async function lockConfig(file) {
       await sleep(35);
     }
   }
-  throw new Error('훅 설정이 잠겨 있습니다. 잠시 후 다시 시도하세요. 설치 중이던 VS Code가 비정상 종료됐다면 모든 창을 닫고 잠금 파일을 삭제한 뒤 다시 열어 주세요. ' + file);
+  throw new Error(t('The hook settings are locked. Try again in a moment. If VS Code quit unexpectedly while installing, close every window, delete the lock file, and reopen.') + ' ' + file);
 }
 
 async function configureHooks(options) {
   const { action, provider, nodePath, hookPath, stateDir } = options;
-  if (process.platform === 'win32') throw new Error('이 설정 명령은 macOS와 Linux에서 지원합니다.');
-  if (!['install', 'remove'].includes(action)) throw new Error('지원하지 않는 설정 동작입니다.');
+  if (process.platform === 'win32') throw new Error(t('This setup command is supported on macOS and Linux.'));
+  if (!['install', 'remove'].includes(action)) throw new Error(t('This setup action is not supported.'));
   const configPath = getConfigPath(provider, options);
   for (const value of action === 'install' ? [nodePath, hookPath, stateDir] : [hookPath, stateDir]) {
-    if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error('훅에는 절대 경로가 필요합니다.');
+    if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error(t('Hooks need absolute paths.'));
     shellQuote(value);
   }
   if (action === 'remove' && !await snapshot(configPath)) return {changed: false, configPath};
@@ -212,17 +213,17 @@ async function configureHooks(options) {
     const changed = updateHooks(config, options);
     const result = {changed, configPath};
     if (action === 'install') {
-      if (provider === 'codex') result.notice = 'Codex CLI의 /hooks에서 추가된 훅을 검토하고 신뢰한 뒤 사용하세요.';
+      if (provider === 'codex') result.notice = t('Review and trust the added hooks with /hooks in the Codex CLI before use.');
       if (provider === 'claude' && config.disableAllHooks === true) {
-        result.notice = 'Claude 사용자 설정의 disableAllHooks가 켜져 있습니다.';
+        result.notice = t('disableAllHooks is turned on in your Claude user settings.');
       }
       if (provider === 'agy' && config[AGY_GROUP]?.enabled === false) {
-        result.notice = 'Antigravity 설정에서 이 훅 그룹이 비활성화되어 있습니다.';
+        result.notice = t('This hook group is turned off in the Antigravity settings.');
       }
     }
     if (!changed) return result;
     if (before && !(before.stat.mode & 0o222)) {
-      throw new Error('설정 파일이 읽기 전용입니다. 파일을 변경하지 않았습니다.');
+      throw new Error(t('The settings file is read-only. The file was not changed.'));
     }
     if (before) await fs.access(configPath, fs.constants.W_OK);
     const indent = input.match(/\r?\n([ \t]+)"/)?.[1] || '  ';
@@ -233,7 +234,7 @@ async function configureHooks(options) {
     await fs.writeFile(temp, body, {flag: 'wx', mode: 0o600});
     if (before) await fs.chmod(temp, before.stat.mode & 0o777);
     if (!sameSnapshot(before, await snapshot(configPath))) {
-      throw new Error('작업 중 설정 파일이 바뀌었습니다. 최신 설정으로 다시 시도해 주세요.');
+      throw new Error(t('The settings file changed while it was being updated. Try again with the latest settings.'));
     }
     if (before) {
       await fs.rename(temp, configPath);
