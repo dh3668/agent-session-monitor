@@ -16,6 +16,11 @@ exports.run = async function () {
   assert.ok(extension.isActive);
   const containers = extension.packageJSON.contributes.viewsContainers.activitybar;
   assert.ok(containers.some(container => container.id === 'agentSessionMonitor'));
+  // Manifest placeholders resolve through the package.nls file of VS Code's display language.
+  const nls = JSON.parse(await fs.readFile(path.join(extension.extensionPath,
+    /^ko(?:$|-)/i.test(vscode.env.language) ? 'package.nls.ko.json' : 'package.nls.json'), 'utf8'));
+  assert.equal(extension.packageJSON.displayName, nls.displayName);
+  assert.equal(containers.find(container => container.id === 'agentSessionMonitor').title, nls['viewsContainers.sessions']);
   const commands = await vscode.commands.getCommands(true);
   for (const suffix of ['connect', 'disconnect', 'rename', 'dismiss', 'open', 'switchSession', 'nextAttention', 'previousSession',
     'markAllSeen', 'allowOpenRequest', 'denyOpenRequest', 'newSession', 'arrange', 'testNotification']) {

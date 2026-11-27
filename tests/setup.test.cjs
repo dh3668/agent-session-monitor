@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

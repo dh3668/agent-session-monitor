@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
@@ -51,7 +52,7 @@ test('registered view and status bar follow overlapping waits, completion, ackno
   let activate;
   try {
     Module._load = function (id, ...args) {
-      if (id === 'vscode') return vscode;
+      if (id === 'vscode') return Object.assign(vscode, { env: { language: 'ko', ...vscode.env } });
       if (id === './children.cjs') return { createChildReader: () => async rows => {
         seedKeys.push(...rows.map(row=>row.key));
         if (pendingRead) { const gate=pendingRead; pendingRead=undefined; gate.enter(); await gate.promise; }
@@ -219,7 +220,7 @@ function loadExtension(vscode, stubs) {
   const original = Module._load;
   try {
     Module._load = function (id, ...args) {
-      if (id === 'vscode') return vscode;
+      if (id === 'vscode') return Object.assign(vscode, { env: { language: 'ko', ...vscode.env } });
       if (Object.hasOwn(stubs, id)) return typeof stubs[id] === 'function' ? stubs[id](original.call(this, id, ...args)) : stubs[id];
       return original.call(this, id, ...args);
     };

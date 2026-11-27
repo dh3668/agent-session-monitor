@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
@@ -52,8 +53,8 @@ test('Claude requests account windows through control messages without a user tu
       extra_usage: {utilization: 20, used_credits: 20},
     }}));
   assert.deepEqual(await read('claude'), {status: 'ready', updatedAt, plan: 'Max', windows: [
-    {label:'5시간',percent:0,kind:'used',resetsAt}, {label:'주간',percent:75,kind:'used'},
-    {label:'Opus 주간',percent:97,kind:'used'}, {label:'Fable 주간',percent:1.5,kind:'used'},
+    {name:'',period:300,percent:0,kind:'used',resetsAt}, {name:'',period:10080,percent:75,kind:'used'},
+    {name:'Opus',period:10080,percent:97,kind:'used'}, {name:'Fable',period:10080,percent:1.5,kind:'used'},
   ]});
 });
 
@@ -77,7 +78,7 @@ test('diagnostic lines a client prints on stdout between protocol messages do no
     });
   `);
   assert.deepEqual(await read('claude'), {status: 'ready', updatedAt, plan: 'Pro', windows: [
-    {label:'5시간',percent:12,kind:'used'},
+    {name:'',period:300,percent:12,kind:'used'},
   ]});
 });
 
@@ -106,8 +107,8 @@ test('Codex sends only initialization and an account rate limit read, preserves 
     });
   `);
   assert.deepEqual(await read('codex'), {status:'ready',plan:'Pro Lite',updatedAt,windows:[
-    {label:'5시간',percent:10,kind:'used',resetsAt},{label:'주간',percent:100,kind:'used'},
-    {label:'Spark · 1시간',percent:50,kind:'used'},
+    {name:'',period:300,percent:10,kind:'used',resetsAt},{name:'',period:10080,percent:100,kind:'used'},
+    {name:'Spark',period:60,percent:50,kind:'used'},
   ]});
 });
 
@@ -133,9 +134,9 @@ test('AGY returns account quota remaining per model group and skips missing and 
         {id:'bad',window:'monthly',remaining_fraction:1.5}]}]}}};
   const read = await fixture(t, 'agy', agyScript('1.1.11', data));
   assert.deepEqual(await read('agy'), {status:'ready',updatedAt,windows:[
-    {label:'Gemini Models · 주간',percent:87.5,kind:'remaining',resetsAt},
-    {label:'Gemini Models · 5시간',percent:100,kind:'remaining'},
-    {label:'Claude and GPT models · 일간',percent:0,kind:'remaining'},
+    {name:'Gemini Models',period:'weekly',percent:87.5,kind:'remaining',resetsAt},
+    {name:'Gemini Models',period:300,percent:100,kind:'remaining'},
+    {name:'Claude and GPT models',period:'daily',percent:0,kind:'remaining'},
   ]});
 });
 

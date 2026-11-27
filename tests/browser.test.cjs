@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -24,7 +25,7 @@ function toCamel(attr) {
 
 // Strict CSP-enforcing DOM harness that throws on any setAttribute('style', ...) or
 // removeAttribute('style') call while faithfully modeling CSSOM CSSStyleDeclaration.
-function createStrictCspDom({ platform = 'MacIntel', initialState = {}, onBeforeScript } = {}) {
+function createStrictCspDom({ platform = 'MacIntel', initialState = {}, onBeforeScript, lang = 'ko' } = {}) {
   let nowPerf = 1000;
   let nowDate = Date.UTC(2026, 10, 25, 12, 0, 0);
   let requestTopOffset = 0;
@@ -536,6 +537,7 @@ function createStrictCspDom({ platform = 'MacIntel', initialState = {}, onBefore
     },
   };
   doc.documentElement.append(doc.body);
+  doc.documentElement.lang = lang;
 
   const logosTpl = doc.createElement('template');
   logosTpl.id = 'logos';
@@ -640,9 +642,9 @@ function baseState(overrides = {}) {
     sessions: [],
     usage: {},
     quotas: {
-      claude: { status: 'ready', plan: 'Max', windows: [{ label: '5시간', kind: 'used', percent: 30 }] },
-      codex: { status: 'ready', plan: 'Pro', windows: [{ label: '5시간', kind: 'used', percent: 40 }] },
-      agy: { status: 'ready', plan: 'Ultra', windows: [{ label: 'Gemini Models · 5시간', kind: 'remaining', percent: 80 }] },
+      claude: { status: 'ready', plan: 'Max', windows: [{ name: '', period: 300, kind: 'used', percent: 30 }] },
+      codex: { status: 'ready', plan: 'Pro', windows: [{ name: '', period: 300, kind: 'used', percent: 40 }] },
+      agy: { status: 'ready', plan: 'Ultra', windows: [{ name: 'Gemini Models', period: 300, kind: 'remaining', percent: 80 }] },
     },
     connections: { claude: 'connected', codex: 'connected', agy: 'connected' },
     elsewhere: [],
@@ -700,9 +702,9 @@ test('strict CSP: progress bars, plan bar, quota tiles and countdown update via 
       },
     ],
     quotas: {
-      claude: { status: 'ready', plan: 'Max', windows: [{ label: '5시간', kind: 'used', percent: 80 }] },
-      codex: { status: 'ready', plan: 'Pro', windows: [{ label: '5시간', kind: 'used', percent: 40 }] },
-      agy: { status: 'ready', plan: 'Ultra', windows: [{ label: 'Gemini Models · 5시간', kind: 'remaining', percent: 80 }] },
+      claude: { status: 'ready', plan: 'Max', windows: [{ name: '', period: 300, kind: 'used', percent: 80 }] },
+      codex: { status: 'ready', plan: 'Pro', windows: [{ name: '', period: 300, kind: 'used', percent: 40 }] },
+      agy: { status: 'ready', plan: 'Ultra', windows: [{ name: 'Gemini Models', period: 300, kind: 'remaining', percent: 80 }] },
     },
     attentionCount: 1,
   }));
@@ -1089,9 +1091,9 @@ test('review fixes: trimmed globals, preview transitions, 1-entry diff cache, cy
   env.postFromHost(baseState({
     sessions: [approval, worker],
     quotas: {
-      claude: { status: 'ready', plan: 'Max', windows: [{ label: '5시간', kind: 'used', percent: 30, resetsAt: now + 30 * 60000 }] },
-      codex: { status: 'ready', plan: 'Pro', windows: [{ label: '5시간', kind: 'used', percent: 40 }] },
-      agy: { status: 'ready', plan: 'Ultra', windows: [{ label: 'Gemini Models · 5시간', kind: 'remaining', percent: 80 }] },
+      claude: { status: 'ready', plan: 'Max', windows: [{ name: '', period: 300, kind: 'used', percent: 30, resetsAt: now + 30 * 60000 }] },
+      codex: { status: 'ready', plan: 'Pro', windows: [{ name: '', period: 300, kind: 'used', percent: 40 }] },
+      agy: { status: 'ready', plan: 'Ultra', windows: [{ name: 'Gemini Models', period: 300, kind: 'remaining', percent: 80 }] },
     },
     attentionCount: 1,
   }));
@@ -1103,9 +1105,9 @@ test('review fixes: trimmed globals, preview transitions, 1-entry diff cache, cy
     env.postFromHost(baseState({
       sessions: [approval, { ...worker, activity: { tool: 'Read', target: 'src/file-' + i + '.ts', at: now + i * 250 } }],
       quotas: {
-        claude: { status: 'ready', plan: 'Max', windows: [{ label: '5시간', kind: 'used', percent: 30, resetsAt: now + 30 * 60000 }] },
-        codex: { status: 'ready', plan: 'Pro', windows: [{ label: '5시간', kind: 'used', percent: 40 }] },
-        agy: { status: 'ready', plan: 'Ultra', windows: [{ label: 'Gemini Models · 5시간', kind: 'remaining', percent: 80 }] },
+        claude: { status: 'ready', plan: 'Max', windows: [{ name: '', period: 300, kind: 'used', percent: 30, resetsAt: now + 30 * 60000 }] },
+        codex: { status: 'ready', plan: 'Pro', windows: [{ name: '', period: 300, kind: 'used', percent: 40 }] },
+        agy: { status: 'ready', plan: 'Ultra', windows: [{ name: 'Gemini Models', period: 300, kind: 'remaining', percent: 80 }] },
       },
       attentionCount: 1,
     }));
@@ -1461,7 +1463,7 @@ ${scriptTags}
 const makeState = (done, used) => ({
   type: 'state', hasWorkspace: true, workspaceLabel: 'demo', isRemoteWorkspace: false, scanError: '',
   sessions: [{ provider: 'claude', key: 'claude/w1', status: 'working', title: 'CSP Check', updatedAt: Date.now(), workSince: Date.now(), progress: { done, total: 4 } }],
-  usage: {}, quotas: { claude: { status: 'ready', plan: 'Max', windows: [{ label: '5시간', kind: 'used', percent: used }] }, codex: { status: 'unavailable', windows: [] }, agy: { status: 'unavailable', windows: [] } },
+  usage: {}, quotas: { claude: { status: 'ready', plan: 'Max', windows: [{ name: '', period: 300, kind: 'used', percent: used }] }, codex: { status: 'unavailable', windows: [] }, agy: { status: 'unavailable', windows: [] } },
   connections: { claude: 'connected', codex: 'connected', agy: 'connected' }, elsewhere: [],
   preferences: { sort: 'priority', providerOrder: ['claude', 'codex', 'agy'], attentionOnly: false, hideCompleted: false },
   hiddenCompleted: 0, attentionCount: 0, unreadCount: 0,
@@ -1676,4 +1678,45 @@ test('Phase 1-3 UI polish: pinned filter-alert, draft preservation across filter
   const openerAfter = env.main.querySelector('[data-key="codex/w-bg"] .opener');
   assert.equal(openerAfter, openerBefore, '.opener DOM node must stay stable across working->approval transition');
   assert.deepEqual(env.getCspAttempts(), { set: 0, remove: 0 });
+});
+
+test('an English page shows the whole panel in English: rows, the open request, the work story, limits and empty states', () => {
+  const env = createStrictCspDom({ lang: 'en' });
+  const now = Date.UTC(2026, 10, 25, 12, 0, 0);
+  const waiting = {
+    provider: 'claude', key: 'claude/wait1', status: 'approval', title: 'Run the tests', updatedAt: now, waitSince: now - 120000,
+    action: { kind: 'approval', token: 'tok-en', tool: 'Bash', detail: '{"command":"npm test","description":"Run the unit tests"}', cwd: '/demo',
+      allow: true, deny: true, expiresAt: now + 45000 },
+  };
+  const working = {
+    provider: 'codex', key: 'codex/w1', status: 'working', title: 'Retry backoff', updatedAt: now, workSince: now - 5 * 60000,
+    prompt: 'Limit retries with exponential backoff', activity: { tool: 'apply_patch', target: 'src/retry.ts', at: now },
+    plan: [{ text: 'Read the retry path', status: 'completed' }, { text: 'Cap retries at three', status: 'in_progress' }],
+    progress: { done: 1, total: 2 }, changed: 2, changedFiles: ['src/retry.ts', 'src/idempotency.ts'],
+    steps: [{ tool: 'apply_patch', target: 'src/retry.ts', at: now }, { tool: 'Read', target: 'src/retry.ts', at: now - 60000 }],
+  };
+  env.postFromHost(baseState({ sessions: [waiting, working], attentionCount: 1, elsewhere: [{ cwd: '/other', folder: 'other', input: 1, approval: 2 }],
+    quotas: {
+      claude: { status: 'ready', plan: 'Max', windows: [{ name: '', period: 300, kind: 'used', percent: 30, resetsAt: now + 90 * 60000 },
+        { name: 'Opus', period: 10080, kind: 'used', percent: 95 }] },
+      codex: { status: 'loading', windows: [] },
+      agy: { status: 'unavailable', windows: [], message: 'Antigravity CLI 1.1.11 or later is required.' },
+    } }));
+  assert.equal(env.main.querySelector('.request')?.dataset.request, 'tok-en', 'the inline request opens by itself');
+  const badge = env.main.querySelector('[data-key="claude/wait1"] .status');
+  assert.equal(badge.querySelector('.status-text').textContent, 'Approval');
+  assert.equal(badge.querySelector('.status-rest').textContent, 'needed');
+  env.main.querySelector('[data-key="codex/w1"] .more').click();
+  const text = env.main.textContent;
+  for (const shown of ['Needs attention', 'Run command', 'Command to run', 'Deny', 'Allow once', 'Open in chat',
+    'Editing code', 'Work plan', 'Changed files', 'Earlier steps', '1m ago', 'Remaining limits', 'Other folders', '1 answer', '2 approvals', '5% Opus', 'Checking']) {
+    assert.ok(text.includes(shown), 'shows ' + shown);
+  }
+  assert.doesNotMatch(text, /[가-힣]/, 'no Korean is left on an English page');
+  const tile = env.main.querySelector('.quota-tile[data-provider="agy"]');
+  assert.match(tile.getAttribute('aria-label'), /Antigravity CLI 1\.1\.11 or later is required\. · Show details$/);
+
+  env.postFromHost(baseState({ sessions: [] }));
+  assert.ok(env.main.textContent.includes('No sessions yet'));
+  assert.doesNotMatch(env.main.textContent, /[가-힣]/);
 });

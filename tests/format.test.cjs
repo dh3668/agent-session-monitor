@@ -1,10 +1,11 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { sinceText, remainingText, resetInText, diffStats, percentLabel, byteSizeText, visible, visibleCommand, shellJoin, foldBlankRuns, lineChanges, modelName,
-  representativeWindow, limitName, requestToken, dismissKey, requestOrder, toolKind, stepText, parseInput, previewQuestions, parseApplyPatch, inputTarget, requestBlocks, requestSummary,
+  quotaLabel, shortLimitLabel, representativeWindow, limitName, requestToken, dismissKey, requestOrder, toolKind, stepText, parseInput, previewQuestions, parseApplyPatch, inputTarget, requestBlocks, requestSummary,
   activePlanStep, errorLabel, depletedQuotaHint, workPhase, fileTargetOf, matchesFilter, subtitleFor } = require('../media/format.js');
 const point = (...codes) => String.fromCodePoint(...codes);
 
@@ -141,24 +142,31 @@ test('an edit is shown as the lines that change, in order, including a large one
 });
 
 test('the limit shown for a subscription is the account-wide one that runs out first', () => {
-  const used = (label, percent) => ({ label, kind: 'used', percent });
-  const left = (label, percent) => ({ label, kind: 'remaining', percent });
-  assert.equal(representativeWindow('claude', [used('5시간', 32), used('주간', 61), used('Opus 주간', 93)]).label, '주간');
-  assert.equal(representativeWindow('claude', [used('5시간', 70), used('주간', 61)]).label, '5시간');
-  assert.equal(representativeWindow('codex', [used('주간', 40), used('5시간', 40)]).label, '5시간', 'a tie goes to the shorter window');
-  assert.equal(representativeWindow('claude', [used('Opus 주간', 93)]).label, 'Opus 주간', 'a model limit stands in when nothing else exists');
-  assert.equal(representativeWindow('agy', [left('Claude and GPT models · 5시간', 7), left('Gemini Models · 5시간', 82.2)]).label,
-    'Gemini Models · 5시간');
+  const used = (name, period, percent) => ({ name, period, kind: 'used', percent });
+  const left = (name, period, percent) => ({ name, period, kind: 'remaining', percent });
+  const shown = (id, windows) => quotaLabel(representativeWindow(id, windows));
+  assert.equal(shown('claude', [used('', 300, 32), used('', 10080, 61), used('Opus', 10080, 93)]), '주간');
+  assert.equal(shown('claude', [used('', 300, 70), used('', 10080, 61)]), '5시간');
+  assert.equal(shown('codex', [used('', 10080, 40), used('', 300, 40)]), '5시간', 'a tie goes to the shorter window');
+  assert.equal(shown('claude', [used('Opus', 10080, 93)]), 'Opus · 주간', 'a model limit stands in when nothing else exists');
+  assert.equal(shown('agy', [left('Claude and GPT models', 300, 7), left('Gemini Models', 300, 82.2)]), 'Gemini Models · 5시간');
+  assert.equal(shown('claude', [used('', 'session', 20), used('', 10080, 20)]), '세션', 'a session is a five-hour window');
   assert.equal(representativeWindow('agy', []), undefined);
 });
 
 test('a limit named beside another is called by its model, and one that is only a period keeps it', () => {
-  assert.equal(limitName('Opus 주간'), 'Opus');
-  assert.equal(limitName('Sonnet 주간'), 'Sonnet');
-  assert.equal(limitName('Claude and GPT models · 5시간'), 'Claude/GPT');
-  assert.equal(limitName('Gemini Models · 5시간'), 'Gemini');
-  assert.equal(limitName('주간'), '주간');
-  assert.equal(limitName('5시간'), '5시간');
+  assert.equal(limitName({ name: 'Opus', period: 10080 }), 'Opus');
+  assert.equal(limitName({ name: 'Sonnet', period: 10080 }), 'Sonnet');
+  assert.equal(limitName({ name: 'Claude and GPT models', period: 300 }), 'Claude/GPT');
+  assert.equal(limitName({ name: 'Gemini Models', period: 300 }), 'Gemini');
+  assert.equal(limitName({ name: '', period: 10080 }), '주간');
+  assert.equal(limitName({ name: '', period: 300 }), '5시간');
+  assert.equal(shortLimitLabel({ name: 'Gemini Models', period: 300 }), 'Gemini 5시간');
+  assert.equal(shortLimitLabel({ name: 'Gemini 3 Pro', period: 300 }), 'Gemini 3 Pro · 5시간');
+  assert.equal(quotaLabel({ name: 'OAuth apps', period: 10080 }), 'OAuth 앱 · 주간');
+  assert.equal(quotaLabel({ name: '', period: 'Opus 주간' }), 'Opus 주간', 'a cached label from before keeps its words');
+  assert.equal(quotaLabel({ name: 'Spark', period: 60 }), 'Spark · 1시간');
+  assert.equal(quotaLabel({ name: '', period: 2880 }), '2일');
 });
 
 test('the request opened first is a question before an approval, then the longest wait; rows with nothing to show are skipped', () => {
@@ -285,12 +293,12 @@ test('diff stats, reset countdown, work phase, plan subtitle, openable file targ
   const depleted = depletedQuotaHint({
     status: 'ready',
     windows: [
-      { label: '주간', kind: 'used', percent: 70, resetsAt: now + 86400000 },
-      { label: '5시간', kind: 'used', percent: 100, resetsAt: now + 90 * 60000 },
+      { name: '', period: 10080, kind: 'used', percent: 70, resetsAt: now + 86400000 },
+      { name: '', period: 300, kind: 'used', percent: 100, resetsAt: now + 90 * 60000 },
     ],
   }, now);
   assert.deepEqual(depleted, { label: '5시간', resetsAt: now + 90 * 60000, resetIn: '1시간 30분 후' });
-  assert.equal(depletedQuotaHint({ status: 'ready', windows: [{ label: '5시간', kind: 'used', percent: 50 }] }, now), undefined);
+  assert.equal(depletedQuotaHint({ status: 'ready', windows: [{ name: '', period: 300, kind: 'used', percent: 50 }] }, now), undefined);
 
   // Antigravity update_steps / update_focus, Claude TaskCreate / Skill, Codex apply_patch & tool kinds.
   assert.deepEqual(toolKind('update_steps'), { kind: 'plan', label: '계획 정리' });
@@ -510,20 +518,20 @@ test('provider parity: tool kinds, #N plan subtitle, quota helpers and interrupt
 
   // AGY quota helpers: representativeWindow, depletedQuotaHint 5h vs weekly tie-break, limitName.
   const now = Date.UTC(2026, 10, 25, 12, 0);
-  assert.equal(representativeWindow('agy', [
-    { label: 'Claude and GPT models · 5시간', kind: 'remaining', percent: 5 },
-    { label: 'Gemini 3 Pro · 5시간', kind: 'remaining', percent: 72 },
-  ]).label, 'Gemini 3 Pro · 5시간');
+  assert.equal(quotaLabel(representativeWindow('agy', [
+    { name: 'Claude and GPT models', period: 300, kind: 'remaining', percent: 5 },
+    { name: 'Gemini 3 Pro', period: 300, kind: 'remaining', percent: 72 },
+  ])), 'Gemini 3 Pro · 5시간');
   assert.equal(depletedQuotaHint({
     status: 'ready',
     windows: [
-      { label: 'Gemini Models · 주간', kind: 'remaining', percent: 0, resetsAt: now + 86400000 },
-      { label: 'Gemini Models · 5시간', kind: 'remaining', percent: 0, resetsAt: now + 3600000 },
+      { name: 'Gemini Models', period: 'weekly', kind: 'remaining', percent: 0, resetsAt: now + 86400000 },
+      { name: 'Gemini Models', period: 300, kind: 'remaining', percent: 0, resetsAt: now + 3600000 },
     ],
   }, now).label, 'Gemini Models · 5시간');
-  assert.equal(limitName('Spark · 기본 구간'), 'Spark');
-  assert.equal(limitName('Codex · 추가 구간'), 'Codex');
-  assert.equal(limitName('기본 구간'), '기본 구간');
+  assert.equal(limitName({ name: 'Spark', period: 'primary' }), 'Spark');
+  assert.equal(limitName({ name: 'Codex', period: 'secondary' }), 'Codex');
+  assert.equal(limitName({ name: '', period: 'primary' }), '기본 구간');
 
   // Interrupted idle phase.
   assert.deepEqual(workPhase({ status: 'idle', interrupted: true }), { kind: 'idle', label: '중단됨' });

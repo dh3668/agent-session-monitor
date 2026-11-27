@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -15,7 +16,7 @@ test('two windows share one account request, private normalized snapshot, and fi
   let time = Date.now(), calls = 0;
   const reader = async () => {
     calls++;
-    return {status:'ready',plan:'Max', email:'unused', windows:[{label:'주간',percent:0,kind:'remaining',resetsAt:time+10000,secret:'unused'}]};
+    return {status:'ready',plan:'Max', email:'unused', windows:[{name:'',period:10080,percent:0,kind:'remaining',resetsAt:time+10000,secret:'unused'}]};
   };
   const a = createQuotaCache(dir,reader,{now:()=>time});
   const b = createQuotaCache(dir,reader,{now:()=>time});
@@ -44,16 +45,25 @@ test('two windows share one account request, private normalized snapshot, and fi
 test('refresh preserves a dated previous result on failure and retries on the next interval', async t => {
   const dir = await fixture(t);
   let time = Date.now(), calls = 0;
-  const cache = createQuotaCache(dir, async () => ++calls === 1 ? {status:'ready', windows:[{label:'주간',kind:'used',percent:42}]} :
+  const cache = createQuotaCache(dir, async () => ++calls === 1 ? {status:'ready', windows:[{name:'Opus',period:10080,kind:'used',percent:42}]} :
     {status:'unavailable',message:'일시적으로 연결할 수 없습니다.'}, {now:()=>time});
   await cache.update('codex'); const stamp = time;
   time += AUTO_INTERVAL;
   await cache.update('codex');
-  assert.deepEqual(cache.entries.codex,{status:'stale', windows:[{label:'주간',kind:'used',percent:42}],updatedAt:stamp,message:'일시적으로 연결할 수 없습니다.'});
+  assert.deepEqual(cache.entries.codex,{status:'stale', windows:[{name:'Opus',period:10080,kind:'used',percent:42}],updatedAt:stamp,message:'일시적으로 연결할 수 없습니다.'});
   time += 86400001;
   await cache.update('codex');
   assert.equal(cache.entries.codex.status,'unavailable');
   assert.equal(calls,3);
+});
+test('a cache written before windows were language-neutral still shows its last reading', async t => {
+  const dir = await fixture(t);
+  const time = Date.now();
+  await fs.writeFile(path.join(dir, 'claude.json'), JSON.stringify({attempt:time, success:{status:'ready', updatedAt:time,
+    windows:[{label:'주간',kind:'used',percent:40}]}}));
+  const cache = createQuotaCache(dir, async () => { throw new Error('not due yet'); }, {now:()=>time});
+  await cache.update('claude');
+  assert.deepEqual(cache.entries.claude.windows, [{name:'',period:'주간',kind:'used',percent:40}]);
 });
 test('first lookup without account data never shows a zero balance', async t => {
   const dir = await fixture(t);

@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -85,7 +86,7 @@ test('runtime copy creates isolated destinations and real hook snapshots reach t
 
 test('a stopped session reads 멈춤, and a waiting row lists only the open requests of its displayed kind', () => {
   const { STATES } = require('../src/model.cjs');
-  assert.equal(STATES.idle.label, '멈춤');
+  assert.equal(require('../media/i18n.js').t(STATES.idle.label), '멈춤');
   const digest = character => character.repeat(64);
   const waiting = row('input', 'refs', { pending: { [digest('a')]: 'input', [digest('b')]: 'approval', generic: 'input', '../x': 'input' } });
   assert.deepEqual(waiting.pendingRefs, [digest('a'), 'generic']);

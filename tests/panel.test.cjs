@@ -1,4 +1,5 @@
 'use strict';
+require('../media/i18n.js').setLocale('ko'); // These cases check the Korean text; i18n.test.cjs covers English.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createPanel, viewState, validateAction } = require('../src/panel.cjs');
@@ -46,19 +47,20 @@ test('quota projection preserves zero, remaining and reset times and omits accou
   const resetsAt = Date.UTC(2026, 10, 27, 12);
   const limits = viewState({ usage: { claude: '123 tokens' }, quotas: { codex: {
     status: 'ready', plan: 'Pro', updatedAt: resetsAt - 1, account: 'private', windows: [
-      { label: '5시간', kind: 'used', percent: 0, resetsAt, account: 'private' },
-      { label: '주간', kind: 'remaining', percent: 23.8 }, { label: '누락', kind: 'used', percent: null },
-      { label: '범위 초과', kind: 'used', percent: 103 }, { label: '알 수 없음', percent: 30 },
+      { name: '', period: 300, kind: 'used', percent: 0, resetsAt, account: 'private' },
+      { name: 'Spark', period: 'weekly', kind: 'remaining', percent: 23.8 }, { name: 'missing', period: 300, kind: 'used', percent: null },
+      { name: 'out of range', period: 300, kind: 'used', percent: 103 }, { name: 'no kind', period: 300, percent: 30 },
+      { name: '', kind: 'used', percent: 5 }, { label: 'legacy label only', kind: 'used', percent: 5 },
     ],
   } } }).quotas;
   assert.deepEqual(limits.codex, { status: 'ready', plan: 'Pro', updatedAt: resetsAt - 1, message: '',
-    windows: [{ label: '5시간', kind: 'used', percent: 0, resetsAt },
-      { label: '주간', kind: 'remaining', percent: 23.8, resetsAt: undefined }] });
+    windows: [{ name: '', period: 300, kind: 'used', percent: 0, resetsAt },
+      { name: 'Spark', period: 'weekly', kind: 'remaining', percent: 23.8, resetsAt: undefined }] });
   assert.deepEqual(limits.claude, { status: 'unavailable', windows: [] });
 });
 
 test('a stale or loading window can retain its last measurement; missing limits never imply zero', () => {
-  const window = { label: '5시간', kind: 'used', percent: 100 };
+  const window = { name: '', period: 300, kind: 'used', percent: 100 };
   for (const status of ['stale', 'loading']) {
     const result = viewState({ quotas: { agy: { status, windows: [window] } } }).quotas.agy;
     assert.equal(result.status, status);
